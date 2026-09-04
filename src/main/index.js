@@ -1,7 +1,12 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, safeStorage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { openDatabase } from './database'
+import { registerMailIpc } from './ipc'
+import { createMailService } from './mail-service'
+
+let store
 
 function createWindow() {
   // Create the browser window.
@@ -13,7 +18,7 @@ function createWindow() {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -49,8 +54,8 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
+  store = openDatabase(app.getPath('userData'))
+  registerMailIpc(createMailService(store, safeStorage))
 
   createWindow()
 
@@ -68,6 +73,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('will-quit', () => {
+  store?.close()
 })
 
 // In this file you can include the rest of your app's specific main process

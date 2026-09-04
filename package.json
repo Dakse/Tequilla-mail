@@ -8,6 +8,7 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
+    "test": "node --experimental-default-type=module --test src/main/*.test.js",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -25,6 +26,8 @@
     "@mui/icons-material": "^9.4.0",
     "@mui/joy": "^5.0.0-beta.52",
     "electron-updater": "^6.3.9",
+    "imapflow": "^1.7.8",
+    "mailparser": "^3.9.20",
     "nodemailer": "^9.1.1",
     "react-resizable-panels": "^4.12.3"
   },

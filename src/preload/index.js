@@ -1,20 +1,20 @@
-import { contextBridge } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
+import { contextBridge, ipcRenderer } from 'electron'
 
-// Custom APIs for renderer
-const api = {}
+const mail = {
+  listAccounts: () => ipcRenderer.invoke('mail:accounts:list'),
+  addAccount: (account) => ipcRenderer.invoke('mail:accounts:add', account),
+  listMailboxes: (accountId) => ipcRenderer.invoke('mail:mailboxes:list', accountId),
+  syncMessages: (request) => ipcRenderer.invoke('mail:messages:sync', request),
+  getMessage: (messageId) => ipcRenderer.invoke('mail:messages:get', messageId),
+  sendMessage: (message) => ipcRenderer.invoke('mail:messages:send', message)
+}
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('mail', mail)
   } catch (error) {
     console.error(error)
   }
 } else {
-  window.electron = electronAPI
-  window.api = api
+  window.mail = mail
 }

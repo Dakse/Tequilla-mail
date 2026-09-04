@@ -1,37 +1,9 @@
-import {
-  AccessTimeRounded,
-  CreateRounded,
-  Delete,
-  DeleteRounded,
-  Filter,
-  Filter1,
-  FilterAlt,
-  FolderDelete,
-  FolderDeleteRounded,
-  Forward,
-  InsertInvitationRounded,
-  MenuOpen,
-  Refresh,
-  Reply,
-  ReplyAll,
-  ReplyOutlined,
-  ReplyRounded,
-  Star,
-  StarOutlineRounded,
-  Title,
-  TitleRounded
-} from '@mui/icons-material'
+import { CreateRounded, Delete, FilterAlt, Refresh } from '@mui/icons-material'
 import Add from '@mui/icons-material/Add'
 import Drafts from '@mui/icons-material/Drafts'
-import ExpandLess from '@mui/icons-material/ExpandLess'
-import ExpandMore from '@mui/icons-material/ExpandMore'
 import Inbox from '@mui/icons-material/Inbox'
-import MarkAsUnread from '@mui/icons-material/MarkAsUnread'
-import RadioButtonChecked from '@mui/icons-material/RadioButtonChecked'
-import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked'
 import Search from '@mui/icons-material/Search'
 import Send from '@mui/icons-material/Send'
-import Sort from '@mui/icons-material/Sort'
 import StarBorder from '@mui/icons-material/StarBorder'
 import SwapVert from '@mui/icons-material/SwapVert'
 import {
@@ -39,101 +11,168 @@ import {
   AccordionDetails,
   AccordionGroup,
   AccordionSummary,
+  Alert,
   Avatar,
   Badge,
   Box,
-  Card,
-  CardContent,
-  CardOverflow,
+  Button,
+  Checkbox,
+  DialogContent,
+  DialogTitle,
   Divider,
   Dropdown,
+  FormControl,
+  FormLabel,
   IconButton,
   Input,
   List,
-  ListItem,
   ListItemButton,
-  ListItemContent,
-  ListItemDecorator,
   ListSubheader,
   Menu,
   MenuButton,
   MenuItem,
+  Modal,
+  ModalClose,
+  ModalDialog,
   Radio,
   Sheet,
+  Stack,
   Typography
 } from '@mui/joy'
 import { useEffect, useState } from 'react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
+import { Group, Panel } from 'react-resizable-panels'
+import EmailDisplay from './EmailDisplay'
+import EmailEditor from './EmailEditor'
 
-function Layout({ children }) {
-  const [selectedAccount, setSelectedAccount] = useState('example@email.com')
+const accountTabs = [
+  { name: 'Inbox', mailbox: '\\Inbox', icon: Inbox, decorator: 'unreadAmount' },
+  { name: 'Sent', mailbox: '\\Sent', icon: Send, enabled: false },
+  { name: 'Drafts', mailbox: '\\Drafts', icon: Drafts, decorator: 'draftsAmount', enabled: false },
+  { name: 'Starred', icon: StarBorder, decorator: 'starredAmount', enabled: false },
+  { name: 'Spam', mailbox: '\\Junk', icon: Delete, decorator: 'spamUnreadAmount', enabled: false }
+]
+
+function initials(value) {
+  return String(value || '?')
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
+function formatMessageDate(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? ''
+    : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+}
+
+function Layout() {
+  const [accounts, setAccounts] = useState([])
+  const [selectedAccount, setSelectedAccount] = useState(null)
   const [selectedTab, setSelectedTab] = useState('Inbox')
   const [sortOption, setSortOption] = useState('newest')
   const [filterOpen, setFilterOpen] = useState(false)
-
+  const [addAccountOpen, setAddAccountOpen] = useState(false)
+  const [addAccountSaving, setAddAccountSaving] = useState(false)
+  const [addAccountError, setAddAccountError] = useState('')
+  const [emailEditorOpen, setEmailEditorOpen] = useState(false)
   const [emails, setEmails] = useState([])
   const [emailsLoading, setEmailsLoading] = useState(false)
-
-  const fetchEmails = () => {
-    console.debug('AAAAAAAA')
-    return new Promise((resolve, reject) => {
-      fetch('https://fake.jsonmockapi.com/custom?size=15', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify([
-          {
-            from: 'email',
-            date: 'date',
-            avatar: 'image',
-            topic: 'sentence',
-            contentTxt: 'paragraph',
-            content: 'paragraph',
-            name: 'username'
-          }
-        ])
-      })
-        .then((response) => response.json())
-        .then((response) => resolve(response))
-        .catch((error) => {
-          console.error('Error:', error)
-          reject(error)
-        })
-    })
-  }
+  const [mailError, setMailError] = useState('')
+  const [refreshVersion, setRefreshVersion] = useState(0)
+  const [selectedEmail, setSelectedEmail] = useState(null)
+  const [selectedEmailLoading, setSelectedEmailLoading] = useState(false)
 
   useEffect(() => {
+    let active = true
+    window.mail
+      .listAccounts()
+      .then((savedAccounts) => {
+        if (!active) return
+        setAccounts(savedAccounts)
+        setSelectedAccount((current) => current || savedAccounts[0]?.id || null)
+      })
+      .catch((error) => active && setMailError(error.message))
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const tab = accountTabs.find((item) => item.name === selectedTab)
+
+    setSelectedEmail(null)
+    if (!selectedAccount || !tab?.mailbox) {
+      setEmails([])
+      return undefined
+    }
+
     setEmailsLoading(true)
-    fetchEmails()
-      .then((res) => setEmails(res))
-      .finally(() => setEmailsLoading(false))
-  }, [selectedAccount, selectedTab])
+    setMailError('')
+    window.mail
+      .syncMessages({ accountId: selectedAccount, mailbox: tab.mailbox, limit: 100 })
+      .then((messages) => active && setEmails(messages))
+      .catch((error) => active && setMailError(error.message))
+      .finally(() => active && setEmailsLoading(false))
+
+    return () => {
+      active = false
+    }
+  }, [selectedAccount, selectedTab, refreshVersion])
 
   const sortOptions = ['newest', 'oldest']
+  const displayedEmails = sortOption === 'oldest' ? [...emails].reverse() : emails
 
-  const accountsData = [
-    {
-      email: 'example@email.com',
-      name: 'Konto email',
-      unreadAmount: 123,
-      draftsAmount: 5,
-      starredAmount: 9,
-      spamUnreadAmount: 36
+  async function openMessage(email) {
+    setEmailEditorOpen(false)
+    setSelectedEmail(email)
+    setSelectedEmailLoading(true)
+    setMailError('')
+    try {
+      const fullMessage = await window.mail.getMessage(email.id)
+      setSelectedEmail((current) => (current?.id === email.id ? fullMessage : current))
+    } catch (error) {
+      setMailError(error.message)
+    } finally {
+      setSelectedEmailLoading(false)
     }
-  ]
+  }
 
-  const accountTabs = [
-    { name: 'Inbox', icon: Inbox, decorator: 'unreadAmount' },
-    { name: 'Sent', icon: Send },
-    { name: 'Drafts', icon: Drafts, decorator: 'draftsAmount' },
-    { name: 'Starred', icon: StarBorder, decorator: 'starredAmount' },
-    { name: 'Spam', icon: Delete, decorator: 'spamUnreadAmount' }
-  ]
+  async function addAccount(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    setAddAccountSaving(true)
+    setAddAccountError('')
 
-  const attachments = [
-    { name: 'veryimportantdocument.docx', weight: '254kb', icon: '', thumbnail: '' }
-  ]
+    try {
+      const account = await window.mail.addAccount({
+        name: form.get('name'),
+        email: form.get('email'),
+        incomingServer: form.get('incomingServer'),
+        incomingPort: form.get('incomingPort'),
+        incomingUsername: form.get('incomingUsername'),
+        incomingPassword: form.get('incomingPassword'),
+        incomingTls: form.has('incomingTls'),
+        outgoingServer: form.get('outgoingServer'),
+        outgoingPort: form.get('outgoingPort'),
+        outgoingUsername: form.get('outgoingUsername'),
+        outgoingPassword: form.get('outgoingPassword'),
+        outgoingTls: form.has('outgoingTls')
+      })
+      setAccounts((current) => [...current, account])
+      setSelectedAccount(account.id)
+      setSelectedTab('Inbox')
+      setAddAccountOpen(false)
+    } catch (error) {
+      setAddAccountError(error.message)
+    } finally {
+      setAddAccountSaving(false)
+    }
+  }
 
   return (
     <Sheet sx={{ height: '100vh', width: '100vw' }}>
@@ -159,33 +198,32 @@ function Layout({ children }) {
                   gap: 1
                 }}
               >
-                <IconButton variant="outlined">
+                <IconButton
+                  aria-label="Refresh messages"
+                  variant="outlined"
+                  disabled={!selectedAccount || emailsLoading}
+                  onClick={() => setRefreshVersion((version) => version + 1)}
+                >
                   <Refresh />
                 </IconButton>
-                <IconButton variant="outlined">
+                <IconButton
+                  aria-label="Compose email"
+                  variant="outlined"
+                  disabled={!selectedAccount}
+                  onClick={() => setEmailEditorOpen(true)}
+                >
                   <CreateRounded />
                 </IconButton>
               </Box>
             </ListSubheader>
             <Divider sx={{ mx: 1.5 }} />
-            {accountsData.map((account) => (
-              <Accordion sx={{ border: 'none' }}>
+            {accounts.map((account) => (
+              <Accordion key={account.id} sx={{ border: 'none' }}>
                 <AccordionSummary sx={{ justifyContent: 'start' }}>
-                  <Avatar variant="solid">
-                    {account?.name
-                      .match(/(\b\S)?/g)
-                      .join('')
-                      .match(/(^\S|\S$)?/g)
-                      .join('')
-                      .toUpperCase()}
-                  </Avatar>
-                  <Box flex={1} overflow={'hidden'} textOverflow={'ellipsis'} whiteSpace={'nowrap'}>
-                    <Typography overflow={'hidden'} textOverflow={'ellipsis'}>
-                      {account.name}
-                    </Typography>
-                    <Typography overflow={'hidden'} textOverflow={'ellipsis'}>
-                      {account.email}
-                    </Typography>
+                  <Avatar variant="solid">{initials(account.name)}</Avatar>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography noWrap>{account.name}</Typography>
+                    <Typography noWrap>{account.email}</Typography>
                   </Box>
                 </AccordionSummary>
                 <AccordionDetails>
@@ -194,10 +232,12 @@ function Layout({ children }) {
                       const Icon = tab.icon
                       return (
                         <ListItemButton
-                          selected={selectedAccount === account.email && selectedTab === tab.name}
+                          key={tab.name}
+                          disabled={tab.enabled === false}
+                          selected={selectedAccount === account.id && selectedTab === tab.name}
                           sx={{ pl: 2 }}
                           onClick={() => {
-                            if (selectedAccount !== account.email) setSelectedAccount(account.email)
+                            if (selectedAccount !== account.id) setSelectedAccount(account.id)
                             if (selectedTab !== tab.name) setSelectedTab(tab.name)
                           }}
                         >
@@ -223,6 +263,7 @@ function Layout({ children }) {
               <ListItemButton
                 variant="outlined"
                 sx={{ borderRadius: (t) => t.radius.md, mx: 1, px: 1 }}
+                onClick={() => setAddAccountOpen(true)}
               >
                 <Typography startDecorator={<Add />}>Add account</Typography>
               </ListItemButton>
@@ -278,6 +319,7 @@ function Layout({ children }) {
                 <Menu>
                   {sortOptions.map((option) => (
                     <MenuItem
+                      key={option}
                       sx={{ textTransform: 'capitalize' }}
                       onClick={() => {
                         if (sortOption !== option) setSortOption(option)
@@ -306,26 +348,50 @@ function Layout({ children }) {
             </AccordionGroup>
             <Divider sx={{ mx: 1.5 }} />
           </Box>
-          <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto',gap:0.5 }}>
-            {emails.map((email) => (
-              <ListItemButton key={email.id} sx={{ alignItems: 'center', width: '100%' }}>
-                <Avatar src={email.avatar} />
+          <List sx={{ flex: 1, minHeight: 0, overflowY: 'auto', gap: 0.5 }}>
+            {emailsLoading && <Typography sx={{ p: 2 }}>Synchronizing mailbox…</Typography>}
+            {!emailsLoading && mailError && (
+              <Alert color="danger" sx={{ mx: 1 }}>
+                {mailError}
+              </Alert>
+            )}
+            {!emailsLoading && !mailError && selectedAccount && displayedEmails.length === 0 && (
+              <Typography sx={{ p: 2 }}>No messages in this mailbox.</Typography>
+            )}
+            {!selectedAccount && (
+              <Typography sx={{ p: 2 }}>Add an account to get started.</Typography>
+            )}
+            {displayedEmails.map((email) => (
+              <ListItemButton
+                key={email.id}
+                selected={selectedEmail?.id === email.id}
+                sx={{ alignItems: 'center', width: '100%' }}
+                onClick={() => openMessage(email)}
+              >
+                <Avatar>{initials(email.from?.name || email.from?.address)}</Avatar>
 
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography
                     level="title-md"
                     fontWeight={'bold'}
-                    slotProps={{ endDecorator: { sx: { ml: 'auto' } },root:{sx:{opacity:0.9}} }}
-                    endDecorator={<Typography noWrap variant='caption' fontWeight={400} level='body-xs'>{email.date}</Typography>}
+                    slotProps={{
+                      endDecorator: { sx: { ml: 'auto' } },
+                      root: { sx: { opacity: 0.9 } }
+                    }}
+                    endDecorator={
+                      <Typography noWrap variant="caption" fontWeight={400} level="body-xs">
+                        {formatMessageDate(email.date)}
+                      </Typography>
+                    }
                     noWrap
                   >
-                    {email.name}
+                    {email.from?.name || email.from?.address || 'Unknown sender'}
                   </Typography>
                   <Typography lineHeight={1} level="body-md" fontWeight={'bold'} noWrap>
-                    {email.topic}
+                    {email.subject}
                   </Typography>
-                  <Typography  level="body-md" variant="caption" noWrap>
-                    {email.contentTxt}
+                  <Typography level="body-md" variant="caption" noWrap>
+                    {email.snippet || email.from?.address}
                   </Typography>
                 </Box>
               </ListItemButton>
@@ -341,107 +407,151 @@ function Layout({ children }) {
             zIndex: 1,
             gap: 1,
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            minHeight: 0,
+            overflow: 'hidden !important'
           }}
           component={Panel}
           minSize={400}
           maxSize={'60%'}
         >
-          <Sheet
-            sx={{
-              borderRadius: (t) => t.radius.md,
-              justifyContent: 'space-around',
-              display: 'flex'
-            }}
-          >
-            <IconButton sx={{ flex: 1 }}>
-              <DeleteRounded />
-            </IconButton>
-            <IconButton sx={{ flex: 1 }}>
-              <FolderDeleteRounded />
-            </IconButton>
-            <IconButton sx={{ flex: 1 }}>
-              <StarOutlineRounded />
-            </IconButton>
-            <IconButton sx={{ flex: 1 }}>
-              <ReplyRounded />
-            </IconButton>
-            <IconButton sx={{ flex: 1 }}>
-              <ReplyRounded sx={{ transform: 'scaleX(-1)' }} />
-            </IconButton>
-          </Sheet>
-          <Divider />
-          <Typography
-            startDecorator={<Avatar sx={{ width: 20, height: 20 }} />}
-            slotProps={{ endDecorator: { sx: { ml: 'auto' } } }}
-            endDecorator={
-              <Typography endDecorator={<InsertInvitationRounded />}>01.01.1970</Typography>
-            }
-            variant="caption"
-          >
-            Email sender
-          </Typography>
-          <Typography
-            startDecorator={<TitleRounded sx={{ fontSize: 20 }} />}
-            lineHeight={1}
-
-            level="title-md"
-            slotProps={{ endDecorator: { sx: { ml: 'auto' } } }}
-            endDecorator={
-              <Typography
-                variant="caption"
-                fontWeight={400}
-                endDecorator={<AccessTimeRounded />}
-                padding={0}
-              >
-                21:37
-              </Typography>
-            }
-          >
-            Email title
-          </Typography>
-          <Card>Rendered email here</Card>
-          <Card>
-            <ListSubheader>Attachments</ListSubheader>
-            <CardContent>
-              {attachments.map((file) => (
-                <Card
-                  sx={{ aspectRatio: '4/3', width: '130px', padding: 0, gap: 0, overflow: 'clip' }}
-                >
-                  <CardOverflow
-                    sx={{
-                      backgroundImage: 'url(https://api.images.cat/300/300)',
-                      height: '100%',
-                      backgroundPosition: 'center',
-                      backgroundSize: 'cover'
-                    }}
-                  ></CardOverflow>
-                  <Sheet
-                    sx={{
-                      px: 1,
-                      py: '3px',
-                      display: 'flex',
-                      borderTop: (t) => `1px solid ${t.palette.divider}`,
-
-                      alignItems: 'center'
-                    }}
-                  >
-                    <Avatar sx={{ width: 20, height: 20, mr: 0.7 }} />
-                    <Typography
-                      level="body-sm"
-                      lineHeight={1}
-                      noWrap
-                      sx={{ minWidth: 0, width: '100%' }}
-                    >
-                      {file.name}
-                    </Typography>
-                  </Sheet>
-                </Card>
-              ))}
-            </CardContent>
-          </Card>
+          {emailEditorOpen ? (
+            <EmailEditor
+              onClose={() => setEmailEditorOpen(false)}
+              onSend={(message) =>
+                window.mail.sendMessage({ accountId: selectedAccount, ...message })
+              }
+            />
+          ) : (
+            <EmailDisplay
+              email={selectedEmail}
+              loading={selectedEmailLoading}
+              onReply={() => setEmailEditorOpen(true)}
+            />
+          )}
         </Box>
       </Group>
+
+      <Modal
+        open={addAccountOpen}
+        onClose={() => {
+          if (!addAccountSaving) setAddAccountOpen(false)
+        }}
+      >
+        <ModalDialog
+          component="form"
+          onSubmit={addAccount}
+          sx={{
+            width: 440,
+            maxWidth: 'calc(100vw - 32px)',
+            maxHeight: 'calc(100vh - 32px)',
+            overflowY: 'auto'
+          }}
+        >
+          <ModalClose disabled={addAccountSaving} />
+          <DialogTitle>Add account</DialogTitle>
+          <DialogContent>Enter the account and mail server details.</DialogContent>
+
+          <Stack spacing={2}>
+            {addAccountError && <Alert color="danger">{addAccountError}</Alert>}
+
+            <FormControl required>
+              <FormLabel>Name</FormLabel>
+              <Input name="name" placeholder="Personal account" autoFocus />
+            </FormControl>
+
+            <FormControl required>
+              <FormLabel>Email</FormLabel>
+              <Input name="email" type="email" placeholder="you@example.com" />
+            </FormControl>
+
+            <Typography level="title-sm">Incoming server (IMAP)</Typography>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 1.5 }}>
+              <FormControl required>
+                <FormLabel>Server</FormLabel>
+                <Input name="incomingServer" placeholder="imap.example.com" />
+              </FormControl>
+
+              <FormControl required>
+                <FormLabel>Port</FormLabel>
+                <Input
+                  name="incomingPort"
+                  type="number"
+                  defaultValue={993}
+                  slotProps={{ input: { min: 1, max: 65535 } }}
+                />
+              </FormControl>
+            </Box>
+
+            <FormControl required>
+              <FormLabel>Username</FormLabel>
+              <Input name="incomingUsername" placeholder="you@example.com" />
+            </FormControl>
+
+            <FormControl required>
+              <FormLabel>Password</FormLabel>
+              <Input name="incomingPassword" type="password" />
+            </FormControl>
+
+            <Checkbox
+              name="incomingTls"
+              label="Use implicit TLS (usually port 993)"
+              defaultChecked
+            />
+
+            <Typography level="title-sm">Outgoing server (SMTP)</Typography>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 1.5 }}>
+              <FormControl required>
+                <FormLabel>Server</FormLabel>
+                <Input name="outgoingServer" placeholder="smtp.example.com" />
+              </FormControl>
+
+              <FormControl required>
+                <FormLabel>Port</FormLabel>
+                <Input
+                  name="outgoingPort"
+                  type="number"
+                  defaultValue={465}
+                  slotProps={{ input: { min: 1, max: 65535 } }}
+                />
+              </FormControl>
+            </Box>
+
+            <FormControl required>
+              <FormLabel>Username</FormLabel>
+              <Input name="outgoingUsername" placeholder="you@example.com" />
+            </FormControl>
+
+            <FormControl required>
+              <FormLabel>Password</FormLabel>
+              <Input name="outgoingPassword" type="password" />
+            </FormControl>
+
+            <Checkbox
+              name="outgoingTls"
+              label="Use implicit TLS (usually port 465; leave off for STARTTLS/587)"
+              defaultChecked
+            />
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+              <Button
+                type="button"
+                variant="plain"
+                color="neutral"
+                disabled={addAccountSaving}
+                onClick={() => setAddAccountOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={addAccountSaving}>
+                Add account
+              </Button>
+            </Box>
+          </Stack>
+        </ModalDialog>
+      </Modal>
     </Sheet>
   )
 }
