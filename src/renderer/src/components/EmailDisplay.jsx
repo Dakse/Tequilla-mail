@@ -1,10 +1,16 @@
 import {
   AccessTimeRounded,
   DeleteRounded,
+  DownloadRounded,
   FolderDeleteRounded,
+  InsertDriveFileRounded,
   InsertInvitationRounded,
+  MarkEmailReadRounded,
+  MarkEmailUnreadRounded,
   ReplyRounded,
-  StarOutlineRounded,
+  RestoreFromTrashRounded,
+  StarBorderRounded,
+  StarRounded,
   TitleRounded
 } from '@mui/icons-material'
 import {
@@ -14,11 +20,11 @@ import {
   CardContent,
   CardOverflow,
   Divider,
-  IconButton,
   ListSubheader,
   Sheet,
   Typography
 } from '@mui/joy'
+import TooltipIconButton from './TooltipIconButton'
 
 function initials(value) {
   return String(value || '?')
@@ -29,7 +35,24 @@ function initials(value) {
     .toUpperCase()
 }
 
-function EmailDisplay({ email, loading, onReply }) {
+function htmlDocument(html) {
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  const policy = document.createElement('meta')
+  policy.httpEquiv = 'Content-Security-Policy'
+  policy.content =
+    "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'"
+  const responsiveStyles = document.createElement('style')
+  responsiveStyles.textContent = `
+    img { max-width: 100%; height: auto; }
+    table { max-width: 100%; }
+  `
+  document.head.prepend(policy)
+  document.head.append(responsiveStyles)
+
+  return `<!doctype html>${document.documentElement.outerHTML}`
+}
+
+function EmailDisplay({ email, loading, actionLoading, mailbox, onSetFlag, onMove, onReply }) {
   if (!email) {
     return (
       <Box sx={{ display: 'grid', flex: 1, placeItems: 'center' }}>
@@ -69,27 +92,65 @@ function EmailDisplay({ email, loading, onReply }) {
           justifyContent: 'space-around'
         }}
       >
-        <IconButton aria-label="Delete email" sx={{ flex: 1 }}>
+        <TooltipIconButton
+          aria-label={email.unread ? 'Mark as read' : 'Mark as unread'}
+          disabled={actionLoading || loading}
+          sx={{ flex: 1 }}
+          onClick={() => onSetFlag('\\Seen', email.unread)}
+        >
+          {email.unread ? <MarkEmailReadRounded /> : <MarkEmailUnreadRounded />}
+        </TooltipIconButton>
+        <TooltipIconButton
+          aria-label={email.starred ? 'Unstar' : 'Star'}
+          disabled={actionLoading || loading}
+          sx={{ flex: 1 }}
+          onClick={() => onSetFlag('\\Flagged', !email.starred)}
+        >
+          {email.starred ? <StarBorderRounded /> : <StarRounded />}
+        </TooltipIconButton>
+        {mailbox === 'Spam' ? (
+          <TooltipIconButton
+            aria-label="Restore to inbox"
+            disabled={actionLoading || loading}
+            sx={{ flex: 1 }}
+            onClick={() => onMove('\\Inbox')}
+          >
+            <RestoreFromTrashRounded />
+          </TooltipIconButton>
+        ) : (
+          <TooltipIconButton
+            aria-label="Move to spam"
+            disabled={actionLoading || loading}
+            sx={{ flex: 1 }}
+            onClick={() => onMove('\\Junk')}
+          >
+            <FolderDeleteRounded />
+          </TooltipIconButton>
+        )}
+        <TooltipIconButton
+          aria-label="Delete email"
+          disabled={actionLoading || loading}
+          sx={{ flex: 1 }}
+          onClick={() => onMove('\\Trash')}
+        >
           <DeleteRounded />
-        </IconButton>
-        <IconButton aria-label="Move email" sx={{ flex: 1 }}>
-          <FolderDeleteRounded />
-        </IconButton>
-        <IconButton aria-label="Star email" sx={{ flex: 1 }}>
-          <StarOutlineRounded />
-        </IconButton>
-        <IconButton aria-label="Reply" sx={{ flex: 1 }} onClick={onReply}>
+        </TooltipIconButton>
+        <TooltipIconButton aria-label="Reply" sx={{ flex: 1 }} onClick={onReply}>
           <ReplyRounded />
-        </IconButton>
-        <IconButton aria-label="Forward" sx={{ flex: 1 }} onClick={onReply}>
+        </TooltipIconButton>
+        <TooltipIconButton aria-label="Forward" sx={{ flex: 1 }} onClick={onReply}>
           <ReplyRounded sx={{ transform: 'scaleX(-1)' }} />
-        </IconButton>
+        </TooltipIconButton>
       </Sheet>
 
       <Divider />
 
       <Typography
-        startDecorator={<Avatar sx={{ width: 20, height: 20 }}>{initials(sender)}</Avatar>}
+        startDecorator={
+          <Avatar src={email.from?.avatar} sx={{ width: 20, height: 20 }}>
+            {initials(sender)}
+          </Avatar>
+        }
         slotProps={{ endDecorator: { sx: { ml: 'auto' } } }}
         endDecorator={<Typography endDecorator={<InsertInvitationRounded />}>{date}</Typography>}
         variant="caption"
@@ -116,13 +177,41 @@ function EmailDisplay({ email, loading, onReply }) {
         {email.subject}
       </Typography>
 
-      <Card sx={{ overflowWrap: 'anywhere' }}>
-        <Typography sx={{ whiteSpace: 'pre-wrap' }}>
-          {loading
-            ? 'Downloading message…'
-            : email.text || email.snippet || 'This message has no plain-text body.'}
-        </Typography>
-      </Card>
+      {loading || !email.html ? (
+        <Card sx={{ overflowWrap: 'anywhere' }}>
+          <Typography sx={{ whiteSpace: 'pre-wrap' }}>
+            {loading
+              ? 'Downloading message…'
+              : email.text || email.snippet || 'This message has no body.'}
+          </Typography>
+        </Card>
+      ) : (
+        <Card
+          sx={{
+            p: 0,
+            overflow: 'hidden'
+          }}
+        >
+          <iframe
+            title={email.subject || 'Email body'}
+            sandbox="allow-same-origin"
+            srcDoc={htmlDocument(email.html)}
+            onLoad={(event) => {
+              const frame = event.currentTarget
+              frame.style.height = `${Math.max(
+                120,
+                frame.contentDocument.documentElement.scrollHeight
+              )}px`
+            }}
+            style={{
+              display: 'block',
+              width: '100%',
+              minHeight: 120,
+              border: 0
+            }}
+          />
+        </Card>
+      )}
 
       {attachments.length > 0 && (
         <Card sx={{ flexShrink: 0 }}>
@@ -137,12 +226,17 @@ function EmailDisplay({ email, loading, onReply }) {
                 >
                   <CardOverflow
                     sx={{
-                      backgroundImage: 'url(https://api.images.cat/300/300)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      backgroundColor: 'background.level1',
+                      backgroundImage: file.thumbnail ? `url("${file.thumbnail}")` : 'none',
                       height: '100%',
                       backgroundPosition: 'center',
                       backgroundSize: 'cover'
                     }}
-                  />
+                  >
+                    {!file.thumbnail && <InsertDriveFileRounded sx={{ fontSize: 40 }} />}
+                  </CardOverflow>
                   <Sheet
                     sx={{
                       px: 1,
@@ -152,10 +246,20 @@ function EmailDisplay({ email, loading, onReply }) {
                       borderTop: (theme) => `1px solid ${theme.palette.divider}`
                     }}
                   >
-                    <Avatar sx={{ width: 20, height: 20, mr: 0.7 }} />
-                    <Typography level="body-sm" lineHeight={1} noWrap sx={{ minWidth: 0 }}>
+                    <Avatar sx={{ width: 20, height: 20, mr: 0.7 }}>
+                      <InsertDriveFileRounded />
+                    </Avatar>
+                    <Typography level="body-sm" lineHeight={1} noWrap sx={{ flex: 1, minWidth: 0 }}>
                       {filename}
                     </Typography>
+                    <TooltipIconButton
+                      aria-label={`Save ${filename}`}
+                      size="sm"
+                      variant="plain"
+                      onClick={() => window.mail.saveAttachment(file.id)}
+                    >
+                      <DownloadRounded />
+                    </TooltipIconButton>
                   </Sheet>
                 </Card>
               )

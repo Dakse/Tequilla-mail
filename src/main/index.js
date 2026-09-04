@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, safeStorage } from 'electron'
+import { app, shell, BrowserWindow, nativeImage, safeStorage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -55,7 +55,7 @@ app.whenReady().then(() => {
   })
 
   store = openDatabase(app.getPath('userData'))
-  registerMailIpc(createMailService(store, safeStorage))
+  registerMailIpc(createMailService(store, safeStorage, nativeImage))
 
   createWindow()
 

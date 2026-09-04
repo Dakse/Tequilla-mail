@@ -6,12 +6,12 @@ import {
   Divider,
   FormControl,
   FormLabel,
-  IconButton,
   Input,
   Textarea,
   Typography
 } from '@mui/joy'
 import { useState } from 'react'
+import TooltipIconButton from './TooltipIconButton'
 
 function EmailEditor({ onClose, onSend }) {
   const [sending, setSending] = useState(false)
@@ -53,7 +53,7 @@ function EmailEditor({ onClose, onSend }) {
         <Typography level="title-lg" sx={{ flex: 1 }}>
           New message
         </Typography>
-        <IconButton
+        <TooltipIconButton
           type="button"
           aria-label="Close editor"
           variant="plain"
@@ -61,7 +61,7 @@ function EmailEditor({ onClose, onSend }) {
           onClick={onClose}
         >
           <CloseRounded />
-        </IconButton>
+        </TooltipIconButton>
       </Box>
 
       <Divider />

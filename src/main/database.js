@@ -10,10 +10,70 @@ function parseJson(value, fallback) {
   }
 }
 
+const publicEmailDomains = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'outlook.com',
+  'hotmail.com',
+  'live.com',
+  'msn.com',
+  'yahoo.com',
+  'ymail.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'proton.me',
+  'protonmail.com',
+  'tuta.com',
+  'tutanota.com',
+  'fastmail.com',
+  'gmx.com',
+  'gmx.net',
+  'mail.com',
+  'zoho.com',
+  'yandex.com',
+  'yandex.ru',
+  'mail.ru',
+  'qq.com',
+  '163.com',
+  'o2.pl',
+  'o2.co.uk',
+  'wp.pl',
+  'onet.pl',
+  'interia.pl',
+  'tlen.pl'
+])
+
+export function senderAvatar(address) {
+  const domain = String(address || '')
+    .trim()
+    .toLowerCase()
+    .split('@')
+    .pop()
+
+  if (
+    !domain ||
+    publicEmailDomains.has(domain) ||
+    [...publicEmailDomains].some((provider) => domain.endsWith(`.${provider}`))
+  ) {
+    return null
+  }
+
+  try {
+    const favicon = new URL('/favicon.ico', `https://${domain}`)
+    return favicon.hostname === domain ? favicon.href : null
+  } catch {
+    return null
+  }
+}
+
 function mapMessage(row) {
   if (!row) return null
 
   const flags = parseJson(row.flagsJson, [])
+  const from = parseJson(row.fromJson, [])[0] || null
+  if (from?.address) from.avatar = senderAvatar(from.address)
 
   return {
     id: row.id,
@@ -22,7 +82,7 @@ function mapMessage(row) {
     uid: row.uid,
     messageId: row.messageId,
     subject: row.subject || '(no subject)',
-    from: parseJson(row.fromJson, [])[0] || null,
+    from,
     to: parseJson(row.toJson, []),
     cc: parseJson(row.ccJson, []),
     date: row.sentAt || row.internalDate,
@@ -31,6 +91,7 @@ function mapMessage(row) {
     starred: flags.includes('\\Flagged'),
     snippet: row.snippet || '',
     text: row.textBody,
+    html: row.htmlBody,
     bodyDownloaded: Boolean(row.bodyDownloaded),
     hasAttachments: Boolean(row.hasAttachments)
   }
@@ -123,6 +184,15 @@ export function openDatabase(userDataPath) {
       smtp_host, smtp_port, smtp_secure, smtp_user, smtp_password
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
+  const updateAccount = db.prepare(`
+    UPDATE accounts SET
+      name = ?, email = ?,
+      imap_host = ?, imap_port = ?, imap_secure = ?, imap_user = ?, imap_password = ?,
+      smtp_host = ?, smtp_port = ?, smtp_secure = ?, smtp_user = ?, smtp_password = ?
+    WHERE id = ?
+  `)
+  const deleteAccount = db.prepare('DELETE FROM accounts WHERE id = ?')
+  const deleteAccountMailboxes = db.prepare('DELETE FROM mailboxes WHERE account_id = ?')
   const listAccounts = db.prepare(`
     SELECT
       a.id,
@@ -133,10 +203,15 @@ export function openDatabase(userDataPath) {
         WHEN mb.special_use = '\\Inbox' AND m.flags_json NOT LIKE '%\\\\Seen%' THEN 1
         ELSE 0
       END), 0) AS unreadAmount,
-      COALESCE(SUM(CASE WHEN mb.special_use = '\\Drafts' THEN 1 ELSE 0 END), 0) AS draftsAmount,
+      COALESCE(SUM(CASE
+        WHEN mb.special_use = '\\Drafts' AND m.id IS NOT NULL THEN 1
+        ELSE 0
+      END), 0) AS draftsAmount,
       COALESCE(SUM(CASE WHEN m.flags_json LIKE '%\\\\Flagged%' THEN 1 ELSE 0 END), 0) AS starredAmount,
       COALESCE(SUM(CASE
-        WHEN mb.special_use IN ('\\Junk', '\\Spam') AND m.flags_json NOT LIKE '%\\\\Seen%' THEN 1
+        WHEN (
+          mb.special_use IN ('\\Junk', '\\Spam') OR lower(mb.name) IN ('junk', 'spam')
+        ) AND m.flags_json NOT LIKE '%\\\\Seen%' THEN 1
         ELSE 0
       END), 0) AS spamUnreadAmount
     FROM accounts a
@@ -214,7 +289,13 @@ export function openDatabase(userDataPath) {
       m.has_attachments AS hasAttachments
     FROM messages m
     JOIN mailboxes mb ON mb.id = m.mailbox_id
-    WHERE mb.account_id = ? AND (mb.special_use = ? OR lower(mb.path) = lower(?))
+    WHERE mb.account_id = ? AND (
+      (? = '\\Flagged' AND m.flags_json LIKE '%\\\\Flagged%') OR
+      (? = '\\Junk' AND (
+        mb.special_use IN ('\\Junk', '\\Spam') OR lower(mb.name) IN ('junk', 'spam')
+      )) OR
+      (? NOT IN ('\\Flagged', '\\Junk') AND (mb.special_use = ? OR lower(mb.path) = lower(?)))
+    )
     ORDER BY COALESCE(m.sent_at, m.internal_date) DESC, m.uid DESC
     LIMIT ? OFFSET ?
   `)
@@ -224,7 +305,7 @@ export function openDatabase(userDataPath) {
       m.message_id AS messageId, m.subject, m.from_json AS fromJson,
       m.to_json AS toJson, m.cc_json AS ccJson, m.sent_at AS sentAt,
       m.internal_date AS internalDate, m.flags_json AS flagsJson, m.snippet,
-      m.text_body AS textBody, m.body_downloaded AS bodyDownloaded,
+      m.text_body AS textBody, m.html_body AS htmlBody, m.body_downloaded AS bodyDownloaded,
       m.has_attachments AS hasAttachments, m.raw_path AS rawPath,
       mb.path AS mailboxPath
     FROM messages m
@@ -237,6 +318,8 @@ export function openDatabase(userDataPath) {
       body_downloaded = 1, has_attachments = ?
     WHERE id = ?
   `)
+  const updateMessageFlags = db.prepare('UPDATE messages SET flags_json = ? WHERE id = ?')
+  const deleteMessage = db.prepare('DELETE FROM messages WHERE id = ?')
   const deleteAttachments = db.prepare('DELETE FROM attachments WHERE message_id = ?')
   const insertAttachment = db.prepare(`
     INSERT INTO attachments (
@@ -245,10 +328,16 @@ export function openDatabase(userDataPath) {
   `)
   const listAttachments = db.prepare(`
     SELECT id, filename, content_type AS contentType, size, content_id AS contentId,
-      disposition
+      disposition, local_path AS localPath
     FROM attachments
     WHERE message_id = ?
     ORDER BY id
+  `)
+  const getAttachment = db.prepare(`
+    SELECT id, filename, content_type AS contentType, size, content_id AS contentId,
+      disposition, local_path AS localPath
+    FROM attachments
+    WHERE id = ?
   `)
 
   return {
@@ -274,6 +363,32 @@ export function openDatabase(userDataPath) {
         account.smtpPassword
       )
       return Number(result.lastInsertRowid)
+    },
+
+    updateAccount(id, account) {
+      updateAccount.run(
+        account.name,
+        account.email,
+        account.imapHost,
+        account.imapPort,
+        account.imapSecure,
+        account.imapUser,
+        account.imapPassword,
+        account.smtpHost,
+        account.smtpPort,
+        account.smtpSecure,
+        account.smtpUser,
+        account.smtpPassword,
+        id
+      )
+    },
+
+    deleteAccount(id) {
+      return deleteAccount.run(id).changes > 0
+    },
+
+    deleteAccountMailboxes(id) {
+      deleteAccountMailboxes.run(id)
     },
 
     getAccount(id) {
@@ -351,7 +466,16 @@ export function openDatabase(userDataPath) {
 
     listMessages(accountId, mailbox, limit = 100, offset = 0) {
       return listMessages
-        .all(accountId, mailbox, mailbox, Math.min(limit, 200), Math.max(offset, 0))
+        .all(
+          accountId,
+          mailbox,
+          mailbox,
+          mailbox,
+          mailbox,
+          mailbox,
+          Math.min(limit, 200),
+          Math.max(offset, 0)
+        )
         .map(mapMessage)
     },
 
@@ -364,6 +488,27 @@ export function openDatabase(userDataPath) {
         mailboxPath: row.mailboxPath,
         attachments: listAttachments.all(id)
       }
+    },
+
+    setMessageFlags(id, flags) {
+      return updateMessageFlags.run(JSON.stringify(flags), id).changes > 0
+    },
+
+    deleteMessages(ids) {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        let changes = 0
+        for (const id of ids) changes += deleteMessage.run(id).changes
+        db.exec('COMMIT')
+        return changes
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    },
+
+    getAttachment(id) {
+      return getAttachment.get(id) || null
     },
 
     saveMessageBody(messageId, body, attachments) {
