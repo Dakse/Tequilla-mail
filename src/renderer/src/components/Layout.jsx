@@ -56,6 +56,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/joy'
+import { useColorScheme } from '@mui/joy/styles'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Group, Panel } from 'react-resizable-panels'
 import { List as VirtualList } from 'react-window'
@@ -81,12 +82,20 @@ function initials(value) {
     .toUpperCase()
 }
 
-function formatMessageDate(value) {
+function emailAddresses(value) {
+  return (Array.isArray(value) ? value : [value]).map((item) => item?.address).filter(Boolean)
+}
+
+function formatMessageDate(value, locale) {
   if (!value) return ''
   const date = new Date(value)
   return Number.isNaN(date.getTime())
     ? ''
-    : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+    : new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(date)
 }
 
 function withMessageFlag(message, flag, enabled) {
@@ -112,6 +121,7 @@ function EmailRow({
   emails,
   openedEmailId,
   selectedEmailIds,
+  dateLocale,
   onOpen,
   onToggle
 }) {
@@ -160,7 +170,7 @@ function EmailRow({
             }}
             endDecorator={
               <Typography noWrap variant="caption" fontWeight={400} level="body-xs">
-                {formatMessageDate(email.date)}
+                {formatMessageDate(email.date, dateLocale)}
               </Typography>
             }
             noWrap
@@ -180,6 +190,7 @@ function EmailRow({
 }
 
 function Layout() {
+  const { mode, setMode } = useColorScheme()
   const [accounts, setAccounts] = useState([])
   const [selectedAccount, setSelectedAccount] = useState(null)
   const [selectedTab, setSelectedTab] = useState('Inbox')
@@ -200,6 +211,13 @@ function Layout() {
   const [selectedEmailIds, setSelectedEmailIds] = useState([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const [messageActionLoading, setMessageActionLoading] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [clearDataLoading, setClearDataLoading] = useState(false)
+  const [settingsError, setSettingsError] = useState('')
+  const [dateFormat, setDateFormat] = useState(() =>
+    localStorage.getItem('dateFormat') === 'american' ? 'american' : 'european'
+  )
+  const dateLocale = dateFormat === 'american' ? 'en-US' : 'en-GB'
 
   useEffect(() => {
     let active = true
@@ -254,6 +272,22 @@ function Layout() {
     const filtered = filterMessages(emails, messageFilters)
     return sortOption === 'oldest' ? filtered.reverse() : filtered
   }, [emails, messageFilters, sortOption])
+  const contacts = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...accounts.map(({ email }) => email),
+            ...emails.flatMap((email) => [
+              ...emailAddresses(email.from),
+              ...emailAddresses(email.to),
+              ...emailAddresses(email.cc)
+            ])
+          ].filter(Boolean)
+        )
+      ].sort(),
+    [accounts, emails]
+  )
   const filtersActive = Object.values(messageFilters).some(Boolean)
   const allEmailsSelected =
     displayedEmails.length > 0 &&
@@ -378,11 +412,34 @@ function Layout() {
       emails: displayedEmails,
       openedEmailId: selectedEmail?.id,
       selectedEmailIds,
+      dateLocale,
       onOpen: openMessage,
       onToggle: toggleEmailSelection
     }),
-    [displayedEmails, openMessage, selectedEmail?.id, selectedEmailIds, toggleEmailSelection]
+    [
+      dateLocale,
+      displayedEmails,
+      openMessage,
+      selectedEmail?.id,
+      selectedEmailIds,
+      toggleEmailSelection
+    ]
   )
+
+  async function clearAllData() {
+    if (!window.confirm('Clear all accounts, downloaded mail, attachments, and preferences?')) return
+
+    setClearDataLoading(true)
+    setSettingsError('')
+    try {
+      await Promise.all(accounts.map((account) => window.mail.deleteAccount(account.id)))
+      localStorage.clear()
+      window.location.reload()
+    } catch (error) {
+      setSettingsError(error.message)
+      setClearDataLoading(false)
+    }
+  }
 
   function closeAccountDialog() {
     setAddAccountOpen(false)
@@ -472,7 +529,7 @@ function Layout() {
             background: (theme) => theme.palette.background.backdrop
           }}
           component={Panel}
-          minSize={200}
+          minSize={230}
           maxSize={500}
         >
           <AccordionGroup sx={{ gap: 1 }}>
@@ -486,6 +543,13 @@ function Layout() {
                   gap: 1
                 }}
               >
+                <TooltipIconButton
+                  aria-label="App settings"
+                  variant="outlined"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <SettingsRounded />
+                </TooltipIconButton>
                 <TooltipIconButton
                   aria-label="Refresh messages"
                   variant="outlined"
@@ -675,76 +739,8 @@ function Layout() {
                 </Menu>
               </Dropdown>
             </Box>
-            <AccordionGroup>
-              <Accordion sx={{ minBlockSize: 0 }} expanded={selectedEmailIds.length > 0}>
-                <Divider sx={{ height: selectedEmailIds.length ? undefined : 0 }} />
-                <AccordionDetails sx={{ pt: selectedEmailIds.length ? 0.7 : 0 }}>
-                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                    <Typography level="body-sm" sx={{ mr: 'auto' }}>
-                      {selectedEmailIds.length} selected
-                    </Typography>
-                    <TooltipIconButton
-                      aria-label="Mark as read"
-                      variant="soft"
-                      disabled={bulkActionLoading}
-                      onClick={() => setSelectedFlag('\\Seen', true)}
-                    >
-                      <MarkEmailReadRounded />
-                    </TooltipIconButton>
-                    <TooltipIconButton
-                      aria-label="Mark as unread"
-                      variant="soft"
-                      disabled={bulkActionLoading}
-                      onClick={() => setSelectedFlag('\\Seen', false)}
-                    >
-                      <MarkEmailUnreadRounded />
-                    </TooltipIconButton>
-                    <TooltipIconButton
-                      aria-label="Star"
-                      variant="soft"
-                      disabled={bulkActionLoading}
-                      onClick={() => setSelectedFlag('\\Flagged', true)}
-                    >
-                      <StarRounded />
-                    </TooltipIconButton>
-                    <TooltipIconButton
-                      aria-label="Unstar"
-                      variant="soft"
-                      disabled={bulkActionLoading}
-                      onClick={() => setSelectedFlag('\\Flagged', false)}
-                    >
-                      <StarBorderRounded />
-                    </TooltipIconButton>
-
-                    <TooltipIconButton
-                      aria-label="Move to spam"
-                      variant="soft"
-                      disabled={bulkActionLoading || selectedTab === 'Spam'}
-                      onClick={() => moveSelectedMessages('\\Junk')}
-                    >
-                      <FolderDeleteRounded />
-                    </TooltipIconButton>
-                    {selectedTab === 'Spam' && (
-                      <TooltipIconButton
-                        aria-label="Restore to inbox"
-                        variant="soft"
-                        disabled={bulkActionLoading}
-                        onClick={() => moveSelectedMessages('\\Inbox')}
-                      >
-                        <RestoreFromTrashRounded />
-                      </TooltipIconButton>
-                    )}
-                    <TooltipIconButton
-                      aria-label="Delete"
-                      variant="soft"
-                      disabled={bulkActionLoading}
-                      onClick={() => moveSelectedMessages('\\Trash')}
-                    >
-                      <DeleteRounded />
-                    </TooltipIconButton>
-                  </Stack>
-                </AccordionDetails>
-              </Accordion>
+            <AccordionGroup disableDivider>
+             
               <Accordion
                 sx={{ minBlockSize: 0 }}
                 expanded={filterOpen}
@@ -853,8 +849,77 @@ function Layout() {
                   </Box>
                 </AccordionDetails>
               </Accordion>
+               <Accordion sx={{ minBlockSize: 0 }} expanded={selectedEmailIds.length > 0}>
+                <Divider sx={{ height: selectedEmailIds.length ? undefined : 0 }} />
+                <AccordionDetails sx={{ pt: selectedEmailIds.length ? 0.7 : 0 }}>
+                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                    <Typography level="body-sm" sx={{ mr: 'auto' }}>
+                      {selectedEmailIds.length} selected
+                    </Typography>
+                    <TooltipIconButton
+                      aria-label="Mark as read"
+                      variant="soft"
+                      disabled={bulkActionLoading}
+                      onClick={() => setSelectedFlag('\\Seen', true)}
+                    >
+                      <MarkEmailReadRounded />
+                    </TooltipIconButton>
+                    <TooltipIconButton
+                      aria-label="Mark as unread"
+                      variant="soft"
+                      disabled={bulkActionLoading}
+                      onClick={() => setSelectedFlag('\\Seen', false)}
+                    >
+                      <MarkEmailUnreadRounded />
+                    </TooltipIconButton>
+                    <TooltipIconButton
+                      aria-label="Star"
+                      variant="soft"
+                      disabled={bulkActionLoading}
+                      onClick={() => setSelectedFlag('\\Flagged', true)}
+                    >
+                      <StarRounded />
+                    </TooltipIconButton>
+                    <TooltipIconButton
+                      aria-label="Unstar"
+                      variant="soft"
+                      disabled={bulkActionLoading}
+                      onClick={() => setSelectedFlag('\\Flagged', false)}
+                    >
+                      <StarBorderRounded />
+                    </TooltipIconButton>
+
+                    <TooltipIconButton
+                      aria-label="Move to spam"
+                      variant="soft"
+                      disabled={bulkActionLoading || selectedTab === 'Spam'}
+                      onClick={() => moveSelectedMessages('\\Junk')}
+                    >
+                      <FolderDeleteRounded />
+                    </TooltipIconButton>
+                    {selectedTab === 'Spam' && (
+                      <TooltipIconButton
+                        aria-label="Restore to inbox"
+                        variant="soft"
+                        disabled={bulkActionLoading}
+                        onClick={() => moveSelectedMessages('\\Inbox')}
+                      >
+                        <RestoreFromTrashRounded />
+                      </TooltipIconButton>
+                    )}
+                    <TooltipIconButton
+                      aria-label="Delete"
+                      variant="soft"
+                      disabled={bulkActionLoading}
+                      onClick={() => moveSelectedMessages('\\Trash')}
+                    >
+                      <DeleteRounded />
+                    </TooltipIconButton>
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
             </AccordionGroup>
-            <Divider sx={{ mx: 1.5 }} />
+            <Divider  />
           </Box>
           <List component="div" sx={{ flex: 1, minHeight: 0, p: 0 }}>
             {emailsLoading && (
@@ -909,6 +974,7 @@ function Layout() {
         >
           {emailEditorOpen ? (
             <EmailEditor
+              contacts={contacts}
               onClose={() => setEmailEditorOpen(false)}
               onSend={(message) =>
                 window.mail.sendMessage({ accountId: selectedAccount, ...message })
@@ -917,6 +983,7 @@ function Layout() {
           ) : (
             <EmailDisplay
               email={selectedEmail}
+              dateLocale={dateLocale}
               loading={selectedEmailLoading}
               actionLoading={messageActionLoading}
               mailbox={selectedTab}
@@ -927,6 +994,63 @@ function Layout() {
           )}
         </Box>
       </Group>
+
+      <Modal open={settingsOpen} onClose={() => !clearDataLoading && setSettingsOpen(false)}>
+        <ModalDialog sx={{ width: 420, maxWidth: 'calc(100vw - 32px)' }}>
+          <ModalClose disabled={clearDataLoading} />
+          <DialogTitle>Settings</DialogTitle>
+          <DialogContent>Customize this app.</DialogContent>
+
+          <Stack spacing={2}>
+            {settingsError && <Alert color="danger">{settingsError}</Alert>}
+
+            <FormControl>
+              <FormLabel>Display mode</FormLabel>
+              <Select
+                value={mode || 'dark'}
+                onChange={(_event, value) => value && setMode(value)}
+              >
+                <Option value="light">Light</Option>
+                <Option value="dark">Dark</Option>
+                <Option value="system">System</Option>
+              </Select>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel>Date display format</FormLabel>
+              <Select
+                value={dateFormat}
+                onChange={(_event, value) => {
+                  if (!value) return
+                  setDateFormat(value)
+                  localStorage.setItem('dateFormat', value)
+                }}
+              >
+                <Option value="american">American (MM/DD/YYYY)</Option>
+                <Option value="european">European (DD/MM/YYYY)</Option>
+              </Select>
+            </FormControl>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography level="body-sm">Current app version</Typography>
+              <Typography level="body-sm" fontWeight="lg">
+                0.0.1
+              </Typography>
+            </Box>
+
+            <Divider />
+            <Button
+              color="danger"
+              variant="outlined"
+              loading={clearDataLoading}
+              startDecorator={<DeleteForeverRounded />}
+              onClick={clearAllData}
+            >
+              Clear all data
+            </Button>
+          </Stack>
+        </ModalDialog>
+      </Modal>
 
       <Modal
         open={addAccountOpen}

@@ -13,6 +13,7 @@ const mail = {
   setMessageFlag: (request) => ipcRenderer.invoke('mail:messages:set-flag', request),
   moveMessages: (request) => ipcRenderer.invoke('mail:messages:move', request),
   sendMessage: (message) => ipcRenderer.invoke('mail:messages:send', message),
+  chooseAttachments: () => ipcRenderer.invoke('mail:attachments:choose'),
   saveAttachment: (attachmentId) => ipcRenderer.invoke('mail:attachments:save', attachmentId)
 }
 

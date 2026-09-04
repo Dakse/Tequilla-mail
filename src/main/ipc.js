@@ -1,7 +1,9 @@
 import { dialog, ipcMain } from 'electron'
+import { stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 
 export function registerMailIpc(mailService) {
+  const selectedAttachmentPaths = new Set()
   ipcMain.handle('mail:accounts:list', () => mailService.listAccounts())
   ipcMain.handle('mail:accounts:get', (_event, accountId) =>
     mailService.getAccountSettings(accountId)
@@ -18,7 +20,34 @@ export function registerMailIpc(mailService) {
   ipcMain.handle('mail:messages:get', (_event, messageId) => mailService.getMessage(messageId))
   ipcMain.handle('mail:messages:set-flag', (_event, request) => mailService.setMessageFlag(request))
   ipcMain.handle('mail:messages:move', (_event, request) => mailService.moveMessages(request))
-  ipcMain.handle('mail:messages:send', (_event, message) => mailService.sendMessage(message))
+  ipcMain.handle('mail:attachments:choose', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })
+    if (result.canceled) return []
+
+    return Promise.all(
+      result.filePaths.map(async (path) => {
+        selectedAttachmentPaths.add(path)
+        return { path, name: basename(path), size: (await stat(path)).size }
+      })
+    )
+  })
+  ipcMain.handle('mail:messages:send', async (_event, message) => {
+    const attachments = Array.isArray(message.attachments) ? message.attachments : []
+    if (attachments.length > 20) throw new Error('A message can have at most 20 attachments')
+    if (attachments.some(({ path }) => !selectedAttachmentPaths.has(path))) {
+      throw new Error('Select attachments with the attachment picker')
+    }
+
+    const result = await mailService.sendMessage({
+      ...message,
+      attachments: attachments.map(({ path, name }) => ({
+        path,
+        filename: basename(name || path)
+      }))
+    })
+    attachments.forEach(({ path }) => selectedAttachmentPaths.delete(path))
+    return result
+  })
   ipcMain.handle('mail:attachments:save', async (_event, attachmentId) => {
     const attachment = mailService.getAttachment(attachmentId)
     const result = await dialog.showSaveDialog({

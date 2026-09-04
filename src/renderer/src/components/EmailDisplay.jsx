@@ -52,7 +52,16 @@ function htmlDocument(html) {
   return `<!doctype html>${document.documentElement.outerHTML}`
 }
 
-function EmailDisplay({ email, loading, actionLoading, mailbox, onSetFlag, onMove, onReply }) {
+function EmailDisplay({
+  email,
+  dateLocale,
+  loading,
+  actionLoading,
+  mailbox,
+  onSetFlag,
+  onMove,
+  onReply
+}) {
   if (!email) {
     return (
       <Box sx={{ display: 'grid', flex: 1, placeItems: 'center' }}>
@@ -65,7 +74,10 @@ function EmailDisplay({ email, loading, actionLoading, mailbox, onSetFlag, onMov
 
   const sender = email.from?.name || email.from?.address || 'Unknown sender'
   const timestamp = email.date ? new Date(email.date) : null
-  const date = timestamp && !Number.isNaN(timestamp.getTime()) ? timestamp.toLocaleDateString() : ''
+  const date =
+    timestamp && !Number.isNaN(timestamp.getTime())
+      ? timestamp.toLocaleDateString(dateLocale)
+      : ''
   const time =
     timestamp && !Number.isNaN(timestamp.getTime())
       ? timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

@@ -571,7 +571,7 @@ export function createMailService(store, safeStorage, nativeImage) {
       await copyFile(attachment.localPath, destination)
     },
 
-    async sendMessage({ accountId, to, subject, text }) {
+    async sendMessage({ accountId, to, subject, text, html, attachments = [] }) {
       const account = accountWithSecrets(accountId)
       const recipient = requiredString(to, 'Recipient')
       const transporter = nodemailer.createTransport(smtpOptions(account))
@@ -581,7 +581,12 @@ export function createMailService(store, safeStorage, nativeImage) {
           from: { name: account.name, address: account.email },
           to: recipient,
           subject: String(subject || ''),
-          text: requiredString(text, 'Message')
+          text: requiredString(text, 'Message'),
+          html: String(html || '') || undefined,
+          attachments: attachments.map(({ filename, path }) => ({
+            filename: basename(filename || path),
+            content: createReadStream(path)
+          }))
         })
 
         return {

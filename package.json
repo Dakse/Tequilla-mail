@@ -30,7 +30,10 @@
     "mailparser": "^3.9.20",
     "nodemailer": "^9.1.1",
     "react-resizable-panels": "^4.12.3",
-    "react-window": "^2.3.0"
+    "react-window": "^2.3.0",
+    "slate": "^0.126.2",
+    "slate-dom": "^0.126.0",
+    "slate-react": "^0.126.4"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config": "^2.1.0",
