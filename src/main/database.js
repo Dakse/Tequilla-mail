@@ -316,6 +316,7 @@ export function openDatabase(userDataPath) {
     JOIN mailboxes mb ON mb.id = m.mailbox_id
     WHERE m.id = ?
   `)
+  const getMessageIdByUid = db.prepare('SELECT id FROM messages WHERE mailbox_id = ? AND uid = ?')
   const saveMessageBody = db.prepare(`
     UPDATE messages SET
       text_body = ?, html_body = ?, snippet = ?, raw_path = ?,
@@ -492,6 +493,11 @@ export function openDatabase(userDataPath) {
         mailboxPath: row.mailboxPath,
         attachments: listAttachments.all(id)
       }
+    },
+
+    getMessageByUid(mailboxId, uid) {
+      const row = getMessageIdByUid.get(mailboxId, uid)
+      return row ? mapMessage(getMessage.get(row.id)) : null
     },
 
     setMessageFlags(id, flags) {

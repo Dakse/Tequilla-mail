@@ -8,6 +8,11 @@ export const emptyMessageFilters = {
   hasAttachment: false
 }
 
+export function mergeMessagePage(current, refreshed) {
+  const refreshedIds = new Set(refreshed.map(({ id }) => id))
+  return [...refreshed, ...current.filter(({ id }) => !refreshedIds.has(id))]
+}
+
 function peopleText(people) {
   return (people || []).map(({ name, address }) => `${name || ''} ${address || ''}`).join(' ')
 }

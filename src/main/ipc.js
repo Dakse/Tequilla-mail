@@ -25,9 +25,19 @@ export function registerMailIpc(mailService) {
     mailService.configureSync(mode, notifyMessagesChanged)
   )
   ipcMain.handle('mail:messages:sync', (_event, request) => mailService.syncMessages(request))
+  ipcMain.handle('mail:messages:search', (_event, request) => mailService.searchMessages(request))
   ipcMain.handle('mail:messages:get', (_event, messageId) => mailService.getMessage(messageId))
-  ipcMain.handle('mail:messages:set-flag', (_event, request) => mailService.setMessageFlag(request))
-  ipcMain.handle('mail:messages:move', (_event, request) => mailService.moveMessages(request))
+  const bulkProgress = (event, request) =>
+    request.reportProgress
+      ? (progress) =>
+          !event.sender.isDestroyed() && event.sender.send('mail:bulk-progress', progress)
+      : undefined
+  ipcMain.handle('mail:messages:set-flag', (event, request) =>
+    mailService.setMessageFlag(request, bulkProgress(event, request))
+  )
+  ipcMain.handle('mail:messages:move', (event, request) =>
+    mailService.moveMessages(request, bulkProgress(event, request))
+  )
   ipcMain.handle('mail:attachments:choose', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })
     if (result.canceled) return []

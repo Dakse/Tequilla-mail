@@ -78,9 +78,25 @@ function hasAttachment(part) {
   return (part.childNodes || []).some(hasAttachment)
 }
 
+function messageSummary(message) {
+  return {
+    uid: message.uid,
+    messageId: message.envelope?.messageId || null,
+    subject: message.envelope?.subject || null,
+    from: addresses(message.envelope?.from),
+    to: addresses(message.envelope?.to),
+    cc: addresses(message.envelope?.cc),
+    sentAt: isoDate(message.envelope?.date),
+    internalDate: isoDate(message.internalDate),
+    flags: [...(message.flags || [])],
+    size: message.size || null,
+    hasAttachments: Number(hasAttachment(message.bodyStructure))
+  }
+}
+
 export function messageSequencePage(messageCount, limit = 50, offset = 0) {
   const count = Math.max(0, Math.trunc(Number(messageCount)) || 0)
-  const size = Math.min(Math.max(1, Math.trunc(Number(limit)) || 50), 100)
+  const size = Math.min(Math.max(1, Math.trunc(Number(limit)) || 50), 500)
   const skipped = Math.max(0, Math.trunc(Number(offset)) || 0)
   const end = count - skipped
   if (end < 1) return { range: null, hasMore: false, limit: size, offset: skipped }
@@ -172,6 +188,21 @@ export function syncPolicy(mode) {
   return { idle: mode === 'sync', timed: mode !== 'manual' }
 }
 
+export function chunks(values, size = 200) {
+  return Array.from({ length: Math.ceil(values.length / size) }, (_, index) =>
+    values.slice(index * size, (index + 1) * size)
+  )
+}
+
+export function createProgressReporter(total, onProgress = () => {}) {
+  let completed = 0
+  onProgress({ completed, total })
+  return (amount) => {
+    completed = Math.min(total, completed + amount)
+    onProgress({ completed, total })
+  }
+}
+
 export function createMailService(store, safeStorage, nativeImage) {
   const idleWatchers = new Map()
   const pendingSyncTimers = new Map()
@@ -211,7 +242,9 @@ export function createMailService(store, safeStorage, nativeImage) {
     const ids = [...new Set((Array.isArray(messageIds) ? messageIds : []).map(Number))].filter(
       (id) => Number.isInteger(id) && id > 0
     )
-    if (!ids.length || ids.length > 200) throw new Error('Select between 1 and 200 messages')
+    if (!ids.length || ids.length > 10_000) {
+      throw new Error('Select between 1 and 10,000 messages')
+    }
 
     const messages = ids.map((id) => store.getMessage(id))
     if (messages.some((message) => !message)) throw new Error('Message not found')
@@ -536,19 +569,7 @@ export function createMailService(store, safeStorage, nativeImage) {
                 })
               : []
 
-            const messages = fetched.map((message) => ({
-              uid: message.uid,
-              messageId: message.envelope?.messageId || null,
-              subject: message.envelope?.subject || null,
-              from: addresses(message.envelope?.from),
-              to: addresses(message.envelope?.to),
-              cc: addresses(message.envelope?.cc),
-              sentAt: isoDate(message.envelope?.date),
-              internalDate: isoDate(message.internalDate),
-              flags: [...(message.flags || [])],
-              size: message.size || null,
-              hasAttachments: Number(hasAttachment(message.bodyStructure))
-            }))
+            const messages = fetched.map(messageSummary)
             const lastSyncedUid = Math.max(
               Number(mailboxRecord.last_synced_uid) || 0,
               ...messages.map((message) => message.uid)
@@ -573,6 +594,90 @@ export function createMailService(store, safeStorage, nativeImage) {
       })
 
       return resultPage(selectedMailbox, remoteHasMore)
+    },
+
+    async searchMessages({ accountId, mailbox = '\\Inbox', query }) {
+      const term = requiredString(query, 'Search query')
+      if (term.length > 200) throw new Error('Search query is too long')
+
+      const account = accountWithSecrets(accountId)
+      const results = []
+
+      await withImap(account, async (client) => {
+        const mailboxes = await client.list(
+          mailbox === '\\Junk' ? { statusQuery: { messages: true } } : undefined
+        )
+        saveMailboxes(mailboxes, account.id)
+        const discoveredMailboxes =
+          mailbox === '\\Flagged'
+            ? mailboxes.filter((item) => !item.flags?.has?.('\\Noselect'))
+            : mailbox === '\\Junk'
+              ? mailboxes.filter(isJunkMailbox)
+              : [selectMailbox(mailboxes, mailbox)].filter(Boolean)
+        if (!discoveredMailboxes.length) throw new Error(`Mailbox not found: ${mailbox}`)
+
+        for (const discoveredMailbox of discoveredMailboxes) {
+          const mailboxRecord = store.getMailbox(account.id, discoveredMailbox.path)
+          if (!mailboxRecord) continue
+
+          const lock = await client.getMailboxLock(mailboxRecord.path, { readOnly: true })
+          try {
+            const uidValidity = String(client.mailbox.uidValidity)
+            if (mailboxRecord.uid_validity && mailboxRecord.uid_validity !== uidValidity) {
+              store.resetMailbox(mailboxRecord.id, uidValidity)
+            }
+
+            const matchedUids =
+              (await client.search(
+                { text: term, ...(mailbox === '\\Flagged' && { flagged: true }) },
+                { uid: true }
+              )) || []
+            const messages = []
+            for (const batch of chunks(matchedUids)) {
+              for await (const message of client.fetch(
+                batch,
+                {
+                  envelope: true,
+                  flags: true,
+                  internalDate: true,
+                  size: true,
+                  bodyStructure: true
+                },
+                { uid: true }
+              )) {
+                messages.push(messageSummary(message))
+              }
+            }
+            const lastSyncedUid = Math.max(
+              Number(mailboxRecord.last_synced_uid) || 0,
+              ...messages.map((message) => message.uid)
+            )
+
+            store.saveMessageSummaries(
+              mailboxRecord.id,
+              {
+                uidValidity,
+                uidNext: client.mailbox.uidNext || null,
+                highestModseq: client.mailbox.highestModseq
+                  ? String(client.mailbox.highestModseq)
+                  : null,
+                lastSyncedUid
+              },
+              messages
+            )
+            results.push(
+              ...messages
+                .map((message) => store.getMessageByUid(mailboxRecord.id, message.uid))
+                .filter(Boolean)
+            )
+          } finally {
+            lock.release()
+          }
+        }
+      })
+
+      results.sort((first, second) => new Date(second.date || 0) - new Date(first.date || 0))
+      return { messages: results, hasMore: false }
     },
 
     async getMessage(messageId) {
@@ -638,18 +743,22 @@ export function createMailService(store, safeStorage, nativeImage) {
       return publicMessage(message, nativeImage)
     },
 
-    async setMessageFlag({ messageIds, flag, enabled }) {
+    async setMessageFlag({ messageIds, flag, enabled }, onProgress) {
       if (!['\\Seen', '\\Flagged'].includes(flag)) throw new Error('Unsupported message flag')
       const { messages, groups } = selectedMessageGroups(messageIds)
+      const advanceProgress = createProgressReporter(messages.length, onProgress)
 
       for (const [accountId, mailboxes] of groups) {
         await withImap(accountWithSecrets(accountId), async (client) => {
           for (const [mailboxPath, mailboxMessages] of mailboxes) {
             const lock = await client.getMailboxLock(mailboxPath)
             try {
-              const uids = mailboxMessages.map((message) => message.uid)
-              if (enabled) await client.messageFlagsAdd(uids, [flag], { uid: true })
-              else await client.messageFlagsRemove(uids, [flag], { uid: true })
+              for (const batch of chunks(mailboxMessages)) {
+                const uids = batch.map((message) => message.uid)
+                if (enabled) await client.messageFlagsAdd(uids, [flag], { uid: true })
+                else await client.messageFlagsRemove(uids, [flag], { uid: true })
+                advanceProgress(batch.length)
+              }
             } finally {
               lock.release()
             }
@@ -666,12 +775,13 @@ export function createMailService(store, safeStorage, nativeImage) {
       return true
     },
 
-    async moveMessages({ messageIds, destination }) {
+    async moveMessages({ messageIds, destination }, onProgress) {
       if (!['\\Inbox', '\\Junk', '\\Trash'].includes(destination)) {
         throw new Error('Unsupported destination mailbox')
       }
       const { ids, messages, groups } = selectedMessageGroups(messageIds)
       const affectedIds = []
+      const advanceProgress = createProgressReporter(messages.length, onProgress)
 
       for (const [accountId, mailboxes] of groups) {
         await withImap(accountWithSecrets(accountId), async (client) => {
@@ -685,13 +795,25 @@ export function createMailService(store, safeStorage, nativeImage) {
           for (const [mailboxPath, mailboxMessages] of mailboxes) {
             const lock = await client.getMailboxLock(mailboxPath)
             try {
-              const uids = mailboxMessages.map((message) => message.uid)
               if (mailboxPath.toLowerCase() !== target.path.toLowerCase()) {
-                await client.messageMove(uids, target.path, { uid: true })
-                affectedIds.push(...mailboxMessages.map((message) => message.id))
+                for (const batch of chunks(mailboxMessages)) {
+                  await client.messageMove(
+                    batch.map((message) => message.uid),
+                    target.path,
+                    { uid: true }
+                  )
+                  affectedIds.push(...batch.map((message) => message.id))
+                  advanceProgress(batch.length)
+                }
               } else if (destination === '\\Trash') {
-                await client.messageDelete(uids, { uid: true })
-                affectedIds.push(...mailboxMessages.map((message) => message.id))
+                for (const batch of chunks(mailboxMessages)) {
+                  await client.messageDelete(
+                    batch.map((message) => message.uid),
+                    { uid: true }
+                  )
+                  affectedIds.push(...batch.map((message) => message.id))
+                  advanceProgress(batch.length)
+                }
               }
             } finally {
               lock.release()
@@ -700,18 +822,19 @@ export function createMailService(store, safeStorage, nativeImage) {
         })
       }
 
-      await Promise.all(
-        messages
-          .filter((message) => affectedIds.includes(message.id))
-          .flatMap((message) => [
+      const affectedIdSet = new Set(affectedIds)
+      for (const batch of chunks(messages.filter((message) => affectedIdSet.has(message.id)))) {
+        await Promise.all(
+          batch.flatMap((message) => [
             message.rawPath ? rm(message.rawPath, { force: true }) : Promise.resolve(),
             rm(join(store.dataPath, 'attachments', String(message.id)), {
               recursive: true,
               force: true
             })
           ])
-      )
-      store.deleteMessages(ids.filter((id) => affectedIds.includes(id)))
+        )
+      }
+      store.deleteMessages(ids.filter((id) => affectedIdSet.has(id)))
       return true
     },
 

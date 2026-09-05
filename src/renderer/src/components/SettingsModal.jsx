@@ -18,10 +18,12 @@ function SettingsModal({
   dateFormat,
   dateSeparator,
   syncMode,
+  messagePageSize,
   updateState,
   onDateFormatChange,
   onDateSeparatorChange,
   onSyncModeChange,
+  onMessagePageSizeChange,
   onClose
 }) {
   const { mode, setMode } = useColorScheme()
@@ -59,6 +61,14 @@ function SettingsModal({
         { value: 'no-sync', label: 'No Sync' },
         { value: 'manual', label: 'Manual' }
       ]
+    },
+    {
+      type: 'buttonGroup',
+      name: 'messagePageSize',
+      label: 'Messages per load',
+      value: messagePageSize,
+      onChange: onMessagePageSizeChange,
+      options: [50, 100, 200, 500]
     },
     {
       type: 'radio',

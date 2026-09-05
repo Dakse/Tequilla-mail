@@ -1,14 +1,13 @@
 import { Sheet } from '@mui/joy'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group } from 'react-resizable-panels'
+import { mergeMessagePage } from '../message-filters'
 import AccountModal from './AccountModal'
 import AccountsPanel from './AccountsPanel'
 import EmailPanel from './EmailPanel'
 import EmailsListPanel from './EmailsListPanel'
 import SettingsModal from './SettingsModal'
 import { accountTabs, emailAddresses, withMessageFlag } from './helpers'
-
-const MESSAGE_PAGE_SIZE = 50
 
 function Layout() {
   const [accounts, setAccounts] = useState([])
@@ -23,11 +22,13 @@ function Layout() {
   const [moreEmailsLoading, setMoreEmailsLoading] = useState(false)
   const [hasMoreEmails, setHasMoreEmails] = useState(false)
   const [mailError, setMailError] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [refreshVersion, setRefreshVersion] = useState(0)
   const [selectedEmail, setSelectedEmail] = useState(null)
   const [selectedEmailLoading, setSelectedEmailLoading] = useState(false)
   const [selectedEmailIds, setSelectedEmailIds] = useState([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
+  const [bulkActionProgress, setBulkActionProgress] = useState({ completed: 0, total: 0 })
   const [messageActionLoading, setMessageActionLoading] = useState(false)
   const [updateState, setUpdateState] = useState({
     status: 'idle',
@@ -47,8 +48,12 @@ function Layout() {
     const saved = localStorage.getItem('syncMode')
     return ['sync', 'no-sync', 'manual'].includes(saved) ? saved : 'sync'
   })
+  const [messagePageSize, setMessagePageSize] = useState(() => {
+    const saved = Number(localStorage.getItem('messagePageSize'))
+    return [50, 100, 200, 500].includes(saved) ? saved : 50
+  })
   const mailboxRequest = useRef(0)
-  const nextMessageOffset = useRef(MESSAGE_PAGE_SIZE)
+  const nextMessageOffset = useRef(messagePageSize)
   const loadingMoreMessages = useRef(false)
 
   useEffect(() => {
@@ -73,18 +78,19 @@ function Layout() {
         .then(setAccounts)
         .catch(() => {})
 
-      if (change.accountId !== selectedAccount || selectedTab !== 'Inbox') return
+      if (change.accountId !== selectedAccount || selectedTab !== 'Inbox' || searchQuery) return
       if (change.error) {
         setMailError(change.error)
         return
       }
 
-      setEmails(change.page.messages)
-      setHasMoreEmails(change.page.hasMore)
-      nextMessageOffset.current = MESSAGE_PAGE_SIZE
+      setEmails((current) => mergeMessagePage(current, change.page.messages))
+      setHasMoreEmails((current) => current || change.page.hasMore)
     })
     return unsubscribe
-  }, [selectedAccount, selectedTab])
+  }, [searchQuery, selectedAccount, selectedTab])
+
+  useEffect(() => window.mail.onBulkProgress(setBulkActionProgress), [])
 
   useEffect(() => {
     window.mail.setSyncMode(syncMode).catch((error) => setMailError(error.message))
@@ -114,7 +120,7 @@ function Layout() {
     setEmailsLoading(false)
     setHasMoreEmails(false)
     setMoreEmailsLoading(false)
-    nextMessageOffset.current = MESSAGE_PAGE_SIZE
+    nextMessageOffset.current = messagePageSize
     loadingMoreMessages.current = false
     if (!selectedAccount || !tab?.mailbox) {
       return undefined
@@ -122,13 +128,14 @@ function Layout() {
 
     setEmailsLoading(true)
     setMailError('')
-    window.mail
-      .syncMessages({
-        accountId: selectedAccount,
-        mailbox: tab.mailbox,
-        limit: MESSAGE_PAGE_SIZE,
-        offset: 0
-      })
+    const requestPage = searchQuery ? window.mail.searchMessages : window.mail.syncMessages
+    requestPage({
+      accountId: selectedAccount,
+      mailbox: tab.mailbox,
+      query: searchQuery,
+      limit: messagePageSize,
+      offset: 0
+    })
       .then(async (page) => {
         if (!active || request !== mailboxRequest.current) return
         setEmails(page.messages)
@@ -142,7 +149,7 @@ function Layout() {
     return () => {
       active = false
     }
-  }, [selectedAccount, selectedTab, refreshVersion])
+  }, [messagePageSize, searchQuery, selectedAccount, selectedTab, refreshVersion])
 
   const loadMoreMessages = useCallback(async () => {
     const tab = accountTabs.find((item) => item.name === selectedTab)
@@ -161,15 +168,17 @@ function Layout() {
     loadingMoreMessages.current = true
     setMoreEmailsLoading(true)
     try {
-      const page = await window.mail.syncMessages({
+      const requestPage = searchQuery ? window.mail.searchMessages : window.mail.syncMessages
+      const page = await requestPage({
         accountId: selectedAccount,
         mailbox: tab.mailbox,
-        limit: MESSAGE_PAGE_SIZE,
+        query: searchQuery,
+        limit: messagePageSize,
         offset
       })
       if (request !== mailboxRequest.current) return
 
-      nextMessageOffset.current = offset + MESSAGE_PAGE_SIZE
+      nextMessageOffset.current = offset + messagePageSize
       setEmails((current) => {
         const existing = new Set(current.map(({ id }) => id))
         return [...current, ...page.messages.filter(({ id }) => !existing.has(id))]
@@ -181,7 +190,7 @@ function Layout() {
       loadingMoreMessages.current = false
       if (request === mailboxRequest.current) setMoreEmailsLoading(false)
     }
-  }, [emailsLoading, hasMoreEmails, selectedAccount, selectedTab])
+  }, [emailsLoading, hasMoreEmails, messagePageSize, searchQuery, selectedAccount, selectedTab])
 
   const contacts = useMemo(
     () =>
@@ -202,9 +211,15 @@ function Layout() {
 
   async function setSelectedFlag(flag, enabled) {
     setBulkActionLoading(true)
+    setBulkActionProgress({ completed: 0, total: selectedEmailIds.length })
     setMailError('')
     try {
-      await window.mail.setMessageFlag({ messageIds: selectedEmailIds, flag, enabled })
+      await window.mail.setMessageFlag({
+        messageIds: selectedEmailIds,
+        flag,
+        enabled,
+        reportProgress: true
+      })
       setSelectedEmailIds([])
       setRefreshVersion((version) => version + 1)
     } catch (error) {
@@ -217,9 +232,10 @@ function Layout() {
   async function moveSelectedMessages(destination) {
     const messageIds = [...selectedEmailIds]
     setBulkActionLoading(true)
+    setBulkActionProgress({ completed: 0, total: messageIds.length })
     setMailError('')
     try {
-      await window.mail.moveMessages({ messageIds, destination })
+      await window.mail.moveMessages({ messageIds, destination, reportProgress: true })
       if (messageIds.includes(selectedEmail?.id)) setSelectedEmail(null)
       setSelectedEmailIds([])
       setRefreshVersion((version) => version + 1)
@@ -375,11 +391,13 @@ function Layout() {
           selectedEmailId={selectedEmail?.id}
           selectedEmailIds={selectedEmailIds}
           bulkActionLoading={bulkActionLoading}
+          bulkActionProgress={bulkActionProgress}
           loadingMore={moreEmailsLoading}
           hasMore={hasMoreEmails}
           dateFormat={dateFormat}
           dateSeparator={dateSeparator}
           onSelectTab={setSelectedTab}
+          onSearch={setSearchQuery}
           onSelectionChange={setSelectedEmailIds}
           onOpen={openMessage}
           onSetFlag={setSelectedFlag}
@@ -410,6 +428,7 @@ function Layout() {
         dateFormat={dateFormat}
         dateSeparator={dateSeparator}
         syncMode={syncMode}
+        messagePageSize={messagePageSize}
         updateState={updateState}
         onDateFormatChange={(value) => {
           setDateFormat(value)
@@ -422,6 +441,10 @@ function Layout() {
         onSyncModeChange={(value) => {
           setSyncMode(value)
           localStorage.setItem('syncMode', value)
+        }}
+        onMessagePageSizeChange={(value) => {
+          setMessagePageSize(value)
+          localStorage.setItem('messagePageSize', value)
         }}
         onClose={() => setSettingsOpen(false)}
       />

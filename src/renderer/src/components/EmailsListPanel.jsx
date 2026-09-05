@@ -29,7 +29,10 @@ import {
   CircularProgress,
   Divider,
   Dropdown,
+  FormControl,
+  FormLabel,
   Input,
+  LinearProgress,
   List,
   ListItemButton,
   Menu,
@@ -40,7 +43,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/joy'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Panel } from 'react-resizable-panels'
 import { List as VirtualList } from 'react-window'
 import { emptyMessageFilters, filterMessages } from '../message-filters'
@@ -50,6 +53,20 @@ import { accountTabs, formatMessageDate, initials, messageContact } from './help
 
 function emailRowKey(index, { emails }) {
   return emails[index].id
+}
+
+function DebouncedSearchInput({ value, onCommit, ...props }) {
+  const [draft, setDraft] = useState(value)
+
+  useEffect(() => setDraft(value), [value])
+  useEffect(() => {
+    const nextValue = draft.trim()
+    if (nextValue === value) return undefined
+    const timer = setTimeout(() => onCommit(nextValue), 500)
+    return () => clearTimeout(timer)
+  }, [draft, onCommit, value])
+
+  return <Input {...props} value={draft} onChange={(event) => setDraft(event.target.value)} />
 }
 
 function EmailRow({
@@ -154,11 +171,13 @@ function EmailsListPanel({
   selectedEmailId,
   selectedEmailIds,
   bulkActionLoading,
+  bulkActionProgress,
   loadingMore,
   hasMore,
   dateFormat,
   dateSeparator,
   onSelectTab,
+  onSearch,
   onSelectionChange,
   onOpen,
   onSetFlag,
@@ -169,13 +188,22 @@ function EmailsListPanel({
   const [filterOpen, setFilterOpen] = useState(false)
   const [messageFilters, setMessageFilters] = useState(emptyMessageFilters)
   const displayedEmails = useMemo(() => {
-    const filtered = filterMessages(emails, messageFilters)
+    const filtered = filterMessages(emails, { ...messageFilters, words: '' })
     return sortOption === 'oldest' ? filtered.reverse() : filtered
   }, [emails, messageFilters, sortOption])
   const filtersActive = Object.values(messageFilters).some(Boolean)
   const allEmailsSelected =
     displayedEmails.length > 0 &&
     displayedEmails.every((email) => selectedEmailIds.includes(email.id))
+
+  const commitSearch = useCallback(
+    (value) => {
+      setMessageFilters((current) => ({ ...current, words: value }))
+      onSelectionChange([])
+      onSearch(value)
+    },
+    [onSearch, onSelectionChange]
+  )
 
   const toggleSelection = useCallback(
     (emailId, checked) =>
@@ -242,12 +270,20 @@ function EmailsListPanel({
       props: { size: 'sm', placeholder: 'Subject' }
     },
     {
+      type: 'custom',
       name: 'words',
-      label: 'Includes words',
-      value: messageFilters.words,
-      onChange: (value) => updateFilter('words', value),
       sx: { gridColumn: '1 / -1' },
-      props: { size: 'sm', placeholder: 'Keywords' }
+      render: () => (
+        <FormControl>
+          <FormLabel>Includes words</FormLabel>
+          <DebouncedSearchInput
+            size="sm"
+            placeholder="Keywords"
+            value={messageFilters.words}
+            onCommit={commitSearch}
+          />
+        </FormControl>
+      )
     },
     {
       name: 'dateFrom',
@@ -320,13 +356,13 @@ function EmailsListPanel({
               onSelectionChange(event.target.checked ? displayedEmails.map(({ id }) => id) : [])
             }
           />
-          <Input
+          <DebouncedSearchInput
             placeholder={`Search "${selectedTab}"`}
             fullWidth
             startDecorator={<Search />}
             variant="soft"
             value={messageFilters.words}
-            onChange={(event) => updateFilter('words', event.target.value)}
+            onCommit={commitSearch}
           />
 
           <Badge invisible={!filtersActive}>
@@ -473,7 +509,21 @@ function EmailsListPanel({
             </AccordionDetails>
           </Accordion>
         </AccordionGroup>
-        <Divider />
+        {bulkActionLoading ? (
+          <LinearProgress
+            aria-label="Bulk action progress"
+            aria-valuetext={`${bulkActionProgress.completed} of ${bulkActionProgress.total} messages`}
+            determinate
+            value={
+              bulkActionProgress.total
+                ? (bulkActionProgress.completed / bulkActionProgress.total) * 100
+                : 0
+            }
+            sx={{ '--LinearProgress-thickness': '2px' }}
+          />
+        ) : (
+          <Divider />
+        )}
       </Box>
 
       <List component="div" sx={{ position: 'relative', flex: 1, minHeight: 0, p: 0 }}>

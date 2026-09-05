@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { emptyMessageFilters, filterMessages } from '../src/renderer/src/message-filters.js'
+import {
+  emptyMessageFilters,
+  filterMessages,
+  mergeMessagePage
+} from '../src/renderer/src/message-filters.js'
 
 test('filters message summaries by people, words, date, and attachment', () => {
   const messages = [
@@ -29,4 +33,15 @@ test('filters message summaries by people, words, date, and attachment', () => {
     1
   )
   assert.equal(filterMessages(messages, { ...emptyMessageFilters, words: 'missing' }).length, 0)
+})
+
+test('refreshes the first message page without discarding loaded rows', () => {
+  const current = [{ id: 2, unread: true }, { id: 1 }]
+  const refreshed = [{ id: 3 }, { id: 2, unread: false }]
+
+  assert.deepEqual(mergeMessagePage(current, refreshed), [
+    { id: 3 },
+    { id: 2, unread: false },
+    { id: 1 }
+  ])
 })

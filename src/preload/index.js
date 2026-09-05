@@ -14,7 +14,13 @@ const mail = {
     ipcRenderer.on('mail:messages:changed', listener)
     return () => ipcRenderer.removeListener('mail:messages:changed', listener)
   },
+  onBulkProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress)
+    ipcRenderer.on('mail:bulk-progress', listener)
+    return () => ipcRenderer.removeListener('mail:bulk-progress', listener)
+  },
   syncMessages: (request) => ipcRenderer.invoke('mail:messages:sync', request),
+  searchMessages: (request) => ipcRenderer.invoke('mail:messages:search', request),
   getMessage: (messageId) => ipcRenderer.invoke('mail:messages:get', messageId),
   setMessageFlag: (request) => ipcRenderer.invoke('mail:messages:set-flag', request),
   moveMessages: (request) => ipcRenderer.invoke('mail:messages:move', request),

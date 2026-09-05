@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  chunks,
   connectionError,
+  createProgressReporter,
   messageSequencePage,
   publicMessage,
   selectMailbox,
@@ -22,6 +24,12 @@ test('pages backward through IMAP sequence numbers', () => {
     offset: 200
   })
   assert.equal(messageSequencePage(250, 50, 250).range, null)
+  assert.deepEqual(messageSequencePage(1000, 500, 0), {
+    range: '501:1000',
+    hasMore: true,
+    limit: 500,
+    offset: 0
+  })
 })
 
 test('creates thumbnails without exposing attachment paths', async () => {
@@ -73,4 +81,26 @@ test('maps synchronization modes to timed and IDLE behavior', () => {
   assert.deepEqual(syncPolicy('no-sync'), { idle: false, timed: true })
   assert.deepEqual(syncPolicy('manual'), { idle: false, timed: false })
   assert.throws(() => syncPolicy('invalid'), /Invalid sync mode/)
+})
+
+test('splits large bulk actions into safe request sizes', () => {
+  assert.deepEqual(
+    chunks(Array.from({ length: 450 }, (_, index) => index)).map((batch) => batch.length),
+    [200, 200, 50]
+  )
+})
+
+test('reports completed messages across bulk action batches', () => {
+  const progress = []
+  const advance = createProgressReporter(450, (value) => progress.push(value))
+  advance(200)
+  advance(200)
+  advance(50)
+
+  assert.deepEqual(progress, [
+    { completed: 0, total: 450 },
+    { completed: 200, total: 450 },
+    { completed: 400, total: 450 },
+    { completed: 450, total: 450 }
+  ])
 })
