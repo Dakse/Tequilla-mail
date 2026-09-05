@@ -1,0 +1,83 @@
+name: Build desktop apps
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+          - os: macos-latest
+            target: mac
+          - os: ubuntu-latest
+            target: linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify release version
+        if: github.ref_type == 'tag'
+        run: node -e "if (process.env.GITHUB_REF_NAME !== 'v' + require('./package.json').version) throw new Error('Git tag must match package.json version')"
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Build ${{ matrix.target }} packages
+        run: npm run build:${{ matrix.target }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload ${{ matrix.target }} packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: tequillamail-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/*.yml
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.snap
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Create one release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --draft --generate-notes --title "TequillaMail ${GITHUB_REF_NAME#v}"
+          fi

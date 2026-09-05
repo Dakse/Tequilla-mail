@@ -18,6 +18,10 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  target:
+    - dmg
+    - zip
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -25,17 +29,14 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
-dmg:
-  artifactName: ${productName}-${version}.${ext}
 linux:
   target:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+  maintainer: Dakse
   category: Utility
-appImage:
-  artifactName: ${productName}-${version}.${ext}
 npmRebuild: false
 publish:
   provider: github
