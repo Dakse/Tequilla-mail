@@ -36,7 +36,7 @@ jobs:
         if: github.ref_type == 'tag'
         run: node -e "if (process.env.GITHUB_REF_NAME !== 'v' + require('./package.json').version) throw new Error('Git tag must match package.json version')"
 
-      - run: npm ci
+      - run: npm install
       - run: npm test
 
       - name: Build ${{ matrix.target }} packages
