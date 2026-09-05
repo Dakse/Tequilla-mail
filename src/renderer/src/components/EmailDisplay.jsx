@@ -56,7 +56,8 @@ function htmlDocument(html) {
   const responsiveStyles = document.createElement('style')
   responsiveStyles.textContent = `
     :root { color-scheme: only light; }
-    html, body { overflow: hidden !important; }
+    html, body { overflow-x: hidden !important; }
+    body { box-sizing: border-box !important; margin: 0 !important; padding-inline: 24px !important; }
     img { max-width: 100%; height: auto; }
     table { max-width: 100%; }
   `
@@ -110,8 +111,7 @@ function EmailDisplay({
         gap: 1,
         minHeight: 0,
         minWidth: 0,
-        overflowX: 'hidden',
-        overflowY: 'auto'
+        overflow: 'hidden'
       }}
     >
       <Sheet
@@ -210,11 +210,19 @@ function EmailDisplay({
       </Typography>
 
       {loading ? (
-        <Card sx={{ minHeight: 120, display: 'grid', placeItems: 'center' }}>
+        <Card sx={{ minHeight: 120, display: 'grid', flex: 1, placeItems: 'center' }}>
           <CircularProgress />
         </Card>
       ) : !email.html ? (
-        <Card sx={{ overflowWrap: 'anywhere' }}>
+        <Card
+          sx={{
+            flex: 1,
+            minHeight: 120,
+            overflowX: 'hidden',
+            overflowY: 'auto',
+            overflowWrap: 'anywhere'
+          }}
+        >
           <Typography sx={{ whiteSpace: 'pre-wrap' }}>
             {email.text || email.snippet || 'This message has no body.'}
           </Typography>
@@ -223,36 +231,21 @@ function EmailDisplay({
         <Card
           sx={{
             p: 0,
+            flex: 1,
+            minHeight: 120,
             overflow: 'hidden'
           }}
         >
           <iframe
             title={email.subject || 'Email body'}
             sandbox="allow-popups allow-same-origin"
-            scrolling="no"
+            scrolling="auto"
             srcDoc={htmlDocument(email.html)}
-            onLoad={(event) => {
-              const frame = event.currentTarget
-              const document = frame.contentDocument
-              frame.emailResizeObserver?.disconnect()
-              frame.style.height = '120px'
-
-              const resize = () => {
-                frame.style.height = `${Math.max(
-                  120,
-                  document.documentElement.scrollHeight,
-                  document.body?.scrollHeight || 0
-                )}px`
-              }
-              frame.emailResizeObserver = new ResizeObserver(resize)
-              frame.emailResizeObserver.observe(document.documentElement)
-              if (document.body) frame.emailResizeObserver.observe(document.body)
-              resize()
-            }}
             style={{
               display: 'block',
+              flex: 1,
               width: '100%',
-              minHeight: 120,
+              minHeight: 0,
               border: 0,
               colorScheme: 'light',
               backgroundColor: '#fff'
