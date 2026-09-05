@@ -18,7 +18,13 @@ function Modal({
         key={dialogKey}
         component={component}
         onSubmit={onSubmit}
-        sx={{ width: 420, maxWidth: 'calc(100vw - 32px)', ...sx }}
+        sx={{
+          width: 420,
+          maxWidth: 'calc(100vw - 32px)',
+          maxHeight: 'calc(100vh - 32px)',
+          overflowY: 'auto',
+          ...sx
+        }}
       >
         <ModalClose disabled={disabled} />
         <DialogTitle>{title}</DialogTitle>

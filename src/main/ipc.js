@@ -2,30 +2,42 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 
-export function registerMailIpc(mailService) {
+export function registerMailIpc(mailService, onUnreadChanged = () => {}) {
   const selectedAttachmentPaths = new Set()
+  const updateUnreadAfter = async (operation) => {
+    const result = await operation()
+    onUnreadChanged()
+    return result
+  }
   const notifyMessagesChanged = (change) => {
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send('mail:messages:changed', change)
     }
+    onUnreadChanged()
   }
   ipcMain.handle('mail:accounts:list', () => mailService.listAccounts())
   ipcMain.handle('mail:accounts:get', (_event, accountId) =>
     mailService.getAccountSettings(accountId)
   )
-  ipcMain.handle('mail:accounts:add', (_event, account) => mailService.addAccount(account))
+  ipcMain.handle('mail:accounts:add', (_event, account) =>
+    updateUnreadAfter(() => mailService.addAccount(account))
+  )
   ipcMain.handle('mail:accounts:update', (_event, accountId, account) =>
-    mailService.updateAccount(accountId, account)
+    updateUnreadAfter(() => mailService.updateAccount(accountId, account))
   )
   ipcMain.handle('mail:accounts:delete', (_event, accountId) =>
-    mailService.deleteAccount(accountId)
+    updateUnreadAfter(() => mailService.deleteAccount(accountId))
   )
   ipcMain.handle('mail:mailboxes:list', (_event, accountId) => mailService.listMailboxes(accountId))
   ipcMain.handle('mail:sync:set-mode', (_event, mode) =>
     mailService.configureSync(mode, notifyMessagesChanged)
   )
-  ipcMain.handle('mail:messages:sync', (_event, request) => mailService.syncMessages(request))
-  ipcMain.handle('mail:messages:search', (_event, request) => mailService.searchMessages(request))
+  ipcMain.handle('mail:messages:sync', (_event, request) =>
+    updateUnreadAfter(() => mailService.syncMessages(request))
+  )
+  ipcMain.handle('mail:messages:search', (_event, request) =>
+    updateUnreadAfter(() => mailService.searchMessages(request))
+  )
   ipcMain.handle('mail:messages:get', (_event, messageId) => mailService.getMessage(messageId))
   const bulkProgress = (event, request) =>
     request.reportProgress
@@ -33,10 +45,10 @@ export function registerMailIpc(mailService) {
           !event.sender.isDestroyed() && event.sender.send('mail:bulk-progress', progress)
       : undefined
   ipcMain.handle('mail:messages:set-flag', (event, request) =>
-    mailService.setMessageFlag(request, bulkProgress(event, request))
+    updateUnreadAfter(() => mailService.setMessageFlag(request, bulkProgress(event, request)))
   )
   ipcMain.handle('mail:messages:move', (event, request) =>
-    mailService.moveMessages(request, bulkProgress(event, request))
+    updateUnreadAfter(() => mailService.moveMessages(request, bulkProgress(event, request)))
   )
   ipcMain.handle('mail:attachments:choose', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })

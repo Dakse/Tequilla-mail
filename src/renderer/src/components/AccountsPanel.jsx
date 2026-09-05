@@ -34,7 +34,7 @@ function AccountsPanel({
   return (
     <Box
       component={Panel}
-      minSize={230}
+      minSize={250}
       maxSize={500}
       sx={{
         boxShadow: (theme) => theme.shadow.lg,

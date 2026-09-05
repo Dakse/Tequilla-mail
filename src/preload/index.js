@@ -39,14 +39,20 @@ const updater = {
   }
 }
 
+const desktop = {
+  setCloseBehavior: (behavior) => ipcRenderer.invoke('app:close-behavior:set', behavior)
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('mail', mail)
     contextBridge.exposeInMainWorld('updater', updater)
+    contextBridge.exposeInMainWorld('desktop', desktop)
   } catch (error) {
     console.error(error)
   }
 } else {
   window.mail = mail
   window.updater = updater
+  window.desktop = desktop
 }

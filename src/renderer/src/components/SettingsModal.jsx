@@ -19,11 +19,13 @@ function SettingsModal({
   dateSeparator,
   syncMode,
   messagePageSize,
+  closeBehavior,
   updateState,
   onDateFormatChange,
   onDateSeparatorChange,
   onSyncModeChange,
   onMessagePageSizeChange,
+  onCloseBehaviorChange,
   onClose
 }) {
   const { mode, setMode } = useColorScheme()
@@ -69,6 +71,21 @@ function SettingsModal({
       value: messagePageSize,
       onChange: onMessagePageSizeChange,
       options: [50, 100, 200, 500]
+    },
+    {
+      type: 'buttonGroup',
+      name: 'closeBehavior',
+      label: 'When closing the app',
+      value: closeBehavior,
+      onChange: onCloseBehaviorChange,
+      description:
+        closeBehavior === 'tray'
+          ? 'Keeps TequillaMail running in the system tray.'
+          : 'Exits TequillaMail completely.',
+      options: [
+        { value: 'tray', label: 'Tray' },
+        { value: 'close', label: 'Close' }
+      ]
     },
     {
       type: 'radio',

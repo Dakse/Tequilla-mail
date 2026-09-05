@@ -478,7 +478,7 @@ export function openDatabase(userDataPath) {
           mailbox,
           mailbox,
           mailbox,
-          Math.min(limit, 200),
+          Math.min(limit, 500),
           Math.max(offset, 0)
         )
         .map(mapMessage)

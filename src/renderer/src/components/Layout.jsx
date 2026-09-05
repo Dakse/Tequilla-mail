@@ -52,6 +52,9 @@ function Layout() {
     const saved = Number(localStorage.getItem('messagePageSize'))
     return [50, 100, 200, 500].includes(saved) ? saved : 50
   })
+  const [closeBehavior, setCloseBehavior] = useState(() =>
+    localStorage.getItem('closeBehavior') === 'close' ? 'close' : 'tray'
+  )
   const mailboxRequest = useRef(0)
   const nextMessageOffset = useRef(messagePageSize)
   const loadingMoreMessages = useRef(false)
@@ -95,6 +98,10 @@ function Layout() {
   useEffect(() => {
     window.mail.setSyncMode(syncMode).catch((error) => setMailError(error.message))
   }, [syncMode])
+
+  useEffect(() => {
+    window.desktop.setCloseBehavior(closeBehavior).catch((error) => setMailError(error.message))
+  }, [closeBehavior])
 
   useEffect(() => {
     let active = true
@@ -429,6 +436,7 @@ function Layout() {
         dateSeparator={dateSeparator}
         syncMode={syncMode}
         messagePageSize={messagePageSize}
+        closeBehavior={closeBehavior}
         updateState={updateState}
         onDateFormatChange={(value) => {
           setDateFormat(value)
@@ -445,6 +453,10 @@ function Layout() {
         onMessagePageSizeChange={(value) => {
           setMessagePageSize(value)
           localStorage.setItem('messagePageSize', value)
+        }}
+        onCloseBehaviorChange={(value) => {
+          setCloseBehavior(value)
+          localStorage.setItem('closeBehavior', value)
         }}
         onClose={() => setSettingsOpen(false)}
       />
