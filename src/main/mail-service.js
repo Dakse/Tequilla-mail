@@ -78,6 +78,17 @@ function hasAttachment(part) {
   return (part.childNodes || []).some(hasAttachment)
 }
 
+export function messageSequencePage(messageCount, limit = 50, offset = 0) {
+  const count = Math.max(0, Math.trunc(Number(messageCount)) || 0)
+  const size = Math.min(Math.max(1, Math.trunc(Number(limit)) || 50), 100)
+  const skipped = Math.max(0, Math.trunc(Number(offset)) || 0)
+  const end = count - skipped
+  if (end < 1) return { range: null, hasMore: false, limit: size, offset: skipped }
+
+  const start = Math.max(1, end - size + 1)
+  return { range: `${start}:${end}`, hasMore: start > 1, limit: size, offset: skipped }
+}
+
 function safeFilename(filename, index) {
   const cleaned = basename(filename || `attachment-${index}`).replace(/[^a-zA-Z0-9._ -]/g, '_')
   return `${index}-${cleaned || 'attachment'}`
@@ -340,13 +351,28 @@ export function createMailService(store, safeStorage, nativeImage) {
       return store.listMailboxes(Number(accountId))
     },
 
-    async syncMessages({ accountId, mailbox = '\\Inbox', limit = 100 }) {
+    async syncMessages({ accountId, mailbox = '\\Inbox', limit = 50, offset = 0 }) {
+      const page = messageSequencePage(0, limit, offset)
+      const resultPage = (selectedMailbox, remoteHasMore = false) => {
+        const messages = store.listMessages(
+          Number(accountId),
+          selectedMailbox,
+          page.limit + 1,
+          page.offset
+        )
+        return {
+          messages: messages.slice(0, page.limit),
+          hasMore: remoteHasMore || messages.length > page.limit
+        }
+      }
+
       if (mailbox === '\\Flagged') {
-        return store.listMessages(Number(accountId), mailbox, limit)
+        return resultPage(mailbox)
       }
 
       const account = accountWithSecrets(accountId)
       let selectedMailbox = mailbox
+      let remoteHasMore = false
 
       await withImap(account, async (client) => {
         const mailboxes = await client.list(
@@ -371,10 +397,10 @@ export function createMailService(store, safeStorage, nativeImage) {
               store.resetMailbox(mailboxRecord.id, uidValidity)
             }
 
-            const messageCount = client.mailbox.exists
-            const start = Math.max(1, messageCount - Math.min(Number(limit) || 100, 200) + 1)
-            const fetched = messageCount
-              ? await client.fetchAll(`${start}:*`, {
+            const sequencePage = messageSequencePage(client.mailbox.exists, page.limit, page.offset)
+            remoteHasMore ||= sequencePage.hasMore
+            const fetched = sequencePage.range
+              ? await client.fetchAll(sequencePage.range, {
                   envelope: true,
                   flags: true,
                   internalDate: true,
@@ -419,7 +445,7 @@ export function createMailService(store, safeStorage, nativeImage) {
         }
       })
 
-      return store.listMessages(Number(accountId), selectedMailbox, limit)
+      return resultPage(selectedMailbox, remoteHasMore)
     },
 
     async getMessage(messageId) {

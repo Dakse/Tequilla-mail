@@ -8,7 +8,8 @@ function EmailPanel({
   contacts,
   selectedAccount,
   email,
-  dateLocale,
+  dateFormat,
+  dateSeparator,
   loading,
   actionLoading,
   mailbox,
@@ -23,10 +24,14 @@ function EmailPanel({
       minSize={400}
       maxSize="60%"
       sx={{
-        background: (theme) => theme.palette.background.backdrop,
+        background: (theme) =>
+          theme.palette.mode === 'dark'
+            ? theme.palette.background.backdrop
+            : theme.palette.background.body,
         py: 1,
         px: 1.5,
-        zIndex: 1,
+        boxShadow: (theme) => theme.shadow.lg,
+        zIndex: 3,
         gap: 1,
         display: 'flex',
         flexDirection: 'column',
@@ -43,7 +48,8 @@ function EmailPanel({
       ) : (
         <EmailDisplay
           email={email}
-          dateLocale={dateLocale}
+          dateFormat={dateFormat}
+          dateSeparator={dateSeparator}
           loading={loading}
           actionLoading={actionLoading}
           mailbox={mailbox}

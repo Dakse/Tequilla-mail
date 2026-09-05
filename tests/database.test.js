@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { openDatabase, senderAvatar } from './database.js'
+import { openDatabase, senderAvatar } from '../src/main/database.js'
 
 test('uses company favicons but not public email provider logos', () => {
   assert.equal(senderAvatar('person@company.example'), 'https://company.example/favicon.ico')
@@ -12,7 +12,7 @@ test('uses company favicons but not public email provider logos', () => {
 })
 
 test('stores accounts and synchronizes messages without duplicates', (context) => {
-  const directory = mkdtempSync(join(tmpdir(), 'daks-mail-'))
+  const directory = mkdtempSync(join(tmpdir(), 'tequillamail-'))
   const store = openDatabase(directory)
   context.after(() => {
     store.close()

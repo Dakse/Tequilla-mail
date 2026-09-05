@@ -1,5 +1,5 @@
 {
-  "name": "daks-mail",
+  "name": "tequillamail",
   "version": "1.0.0",
   "description": "An Electron application with React",
   "main": "./out/main/index.js",
@@ -8,7 +8,7 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
-    "test": "node --experimental-default-type=module --test src/main/*.test.js",
+    "test": "node --experimental-default-type=module --test tests/*.test.js",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",

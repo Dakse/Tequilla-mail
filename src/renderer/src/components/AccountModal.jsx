@@ -1,17 +1,110 @@
 import { DeleteForeverRounded } from '@mui/icons-material'
-import {
-  Alert,
-  Box,
-  Button,
-  Checkbox,
-  FormControl,
-  FormLabel,
-  Input,
-  Stack,
-  Typography
-} from '@mui/joy'
+import { Alert, Box, Button, Stack } from '@mui/joy'
 import { useState } from 'react'
 import Modal from './Modal.jsx'
+import UniversalForm from './UniversalForm'
+
+function accountFields(account) {
+  const serverRow = { display: 'grid', gridTemplateColumns: '1fr 120px', gap: 1.5 }
+  return [
+    {
+      name: 'name',
+      label: 'Name',
+      required: true,
+      defaultValue: account?.name,
+      props: { placeholder: 'Personal account', autoFocus: true }
+    },
+    {
+      name: 'email',
+      label: 'Email',
+      required: true,
+      defaultValue: account?.email,
+      props: { type: 'email', placeholder: 'you@example.com' }
+    },
+    { type: 'section', label: 'Incoming server (IMAP)' },
+    {
+      type: 'row',
+      key: 'incoming-server',
+      sx: serverRow,
+      fields: [
+        {
+          name: 'incomingServer',
+          label: 'Server',
+          required: true,
+          defaultValue: account?.incomingServer,
+          props: { placeholder: 'imap.example.com' }
+        },
+        {
+          name: 'incomingPort',
+          label: 'Port',
+          required: true,
+          defaultValue: account?.incomingPort || 993,
+          props: { type: 'number', slotProps: { input: { min: 1, max: 65535 } } }
+        }
+      ]
+    },
+    {
+      name: 'incomingUsername',
+      label: 'Username',
+      required: true,
+      defaultValue: account?.incomingUsername,
+      props: { placeholder: 'you@example.com' }
+    },
+    {
+      name: 'incomingPassword',
+      label: 'Password',
+      required: !account,
+      props: { type: 'password', placeholder: account ? '************' : '' }
+    },
+    {
+      type: 'checkbox',
+      name: 'incomingTls',
+      label: 'Use TLS',
+      defaultValue: account ? account.incomingTls : true
+    },
+    { type: 'section', label: 'Outgoing server (SMTP)' },
+    {
+      type: 'row',
+      key: 'outgoing-server',
+      sx: serverRow,
+      fields: [
+        {
+          name: 'outgoingServer',
+          label: 'Server',
+          required: true,
+          defaultValue: account?.outgoingServer,
+          props: { placeholder: 'smtp.example.com' }
+        },
+        {
+          name: 'outgoingPort',
+          label: 'Port',
+          required: true,
+          defaultValue: account?.outgoingPort || 465,
+          props: { type: 'number', slotProps: { input: { min: 1, max: 65535 } } }
+        }
+      ]
+    },
+    {
+      name: 'outgoingUsername',
+      label: 'Username',
+      required: true,
+      defaultValue: account?.outgoingUsername,
+      props: { placeholder: 'you@example.com' }
+    },
+    {
+      name: 'outgoingPassword',
+      label: 'Password',
+      required: !account,
+      props: { type: 'password', placeholder: account ? '************' : '' }
+    },
+    {
+      type: 'checkbox',
+      name: 'outgoingTls',
+      label: 'Use TLS',
+      defaultValue: account ? account.outgoingTls : true
+    }
+  ]
+}
 
 function AccountModal({ open, account, onClose, onSaved, onDeleted }) {
   const [saving, setSaving] = useState(false)
@@ -88,143 +181,41 @@ function AccountModal({ open, account, onClose, onSaved, onDeleted }) {
     >
       <Stack spacing={2}>
         {error && <Alert color="danger">{error}</Alert>}
-
-        <FormControl required>
-          <FormLabel>Name</FormLabel>
-          <Input
-            name="name"
-            placeholder="Personal account"
-            defaultValue={account?.name}
-            autoFocus
-          />
-        </FormControl>
-
-        <FormControl required>
-          <FormLabel>Email</FormLabel>
-          <Input
-            name="email"
-            type="email"
-            placeholder="you@example.com"
-            defaultValue={account?.email}
-          />
-        </FormControl>
-
-        <Typography level="title-sm">Incoming server (IMAP)</Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 1.5 }}>
-          <FormControl required>
-            <FormLabel>Server</FormLabel>
-            <Input
-              name="incomingServer"
-              placeholder="imap.example.com"
-              defaultValue={account?.incomingServer}
-            />
-          </FormControl>
-          <FormControl required>
-            <FormLabel>Port</FormLabel>
-            <Input
-              name="incomingPort"
-              type="number"
-              defaultValue={account?.incomingPort || 993}
-              slotProps={{ input: { min: 1, max: 65535 } }}
-            />
-          </FormControl>
-        </Box>
-
-        <FormControl required>
-          <FormLabel>Username</FormLabel>
-          <Input
-            name="incomingUsername"
-            placeholder="you@example.com"
-            defaultValue={account?.incomingUsername}
-          />
-        </FormControl>
-        <FormControl required={!account}>
-          <FormLabel>Password</FormLabel>
-          <Input
-            name="incomingPassword"
-            type="password"
-            placeholder={account ? '************' : ''}
-          />
-        </FormControl>
-        <Checkbox
-          name="incomingTls"
-          label="Use TLS"
-          defaultChecked={account ? account.incomingTls : true}
-        />
-
-        <Typography level="title-sm">Outgoing server (SMTP)</Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 1.5 }}>
-          <FormControl required>
-            <FormLabel>Server</FormLabel>
-            <Input
-              name="outgoingServer"
-              placeholder="smtp.example.com"
-              defaultValue={account?.outgoingServer}
-            />
-          </FormControl>
-          <FormControl required>
-            <FormLabel>Port</FormLabel>
-            <Input
-              name="outgoingPort"
-              type="number"
-              defaultValue={account?.outgoingPort || 465}
-              slotProps={{ input: { min: 1, max: 65535 } }}
-            />
-          </FormControl>
-        </Box>
-
-        <FormControl required>
-          <FormLabel>Username</FormLabel>
-          <Input
-            name="outgoingUsername"
-            placeholder="you@example.com"
-            defaultValue={account?.outgoingUsername}
-          />
-        </FormControl>
-        <FormControl required={!account}>
-          <FormLabel>Password</FormLabel>
-          <Input
-            name="outgoingPassword"
-            type="password"
-            placeholder={account ? '************' : ''}
-          />
-        </FormControl>
-        <Checkbox
-          name="outgoingTls"
-          label="Use TLS"
-          defaultChecked={account ? account.outgoingTls : true}
-        />
-
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
-          {account ? (
-            <Button
-              type="button"
-              color="danger"
-              variant="outlined"
-              startDecorator={<DeleteForeverRounded />}
-              disabled={saving}
-              onClick={deleteAccount}
-            >
-              Delete account
-            </Button>
-          ) : (
-            <span />
+        <UniversalForm
+          fields={accountFields(account)}
+          actions={() => (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+              {account ? (
+                <Button
+                  type="button"
+                  color="danger"
+                  variant="outlined"
+                  startDecorator={<DeleteForeverRounded />}
+                  disabled={saving}
+                  onClick={deleteAccount}
+                >
+                  Delete account
+                </Button>
+              ) : (
+                <span />
+              )}
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  color="neutral"
+                  disabled={saving}
+                  onClick={close}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" loading={saving}>
+                  {account ? 'Save changes' : 'Add account'}
+                </Button>
+              </Box>
+            </Box>
           )}
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              type="button"
-              variant="outlined"
-              color="neutral"
-              disabled={saving}
-              onClick={close}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              {account ? 'Save changes' : 'Add account'}
-            </Button>
-          </Box>
-        </Box>
+        />
       </Stack>
     </Modal>
   )

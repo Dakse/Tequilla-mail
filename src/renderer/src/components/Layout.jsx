@@ -1,5 +1,5 @@
 import { Sheet } from '@mui/joy'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group } from 'react-resizable-panels'
 import AccountModal from './AccountModal'
 import AccountsPanel from './AccountsPanel'
@@ -7,6 +7,8 @@ import EmailPanel from './EmailPanel'
 import EmailsListPanel from './EmailsListPanel'
 import SettingsModal from './SettingsModal'
 import { accountTabs, emailAddresses, withMessageFlag } from './helpers'
+
+const MESSAGE_PAGE_SIZE = 50
 
 function Layout() {
   const [accounts, setAccounts] = useState([])
@@ -18,6 +20,8 @@ function Layout() {
   const [emailEditorOpen, setEmailEditorOpen] = useState(false)
   const [emails, setEmails] = useState([])
   const [emailsLoading, setEmailsLoading] = useState(false)
+  const [moreEmailsLoading, setMoreEmailsLoading] = useState(false)
+  const [hasMoreEmails, setHasMoreEmails] = useState(false)
   const [mailError, setMailError] = useState('')
   const [refreshVersion, setRefreshVersion] = useState(0)
   const [selectedEmail, setSelectedEmail] = useState(null)
@@ -25,10 +29,18 @@ function Layout() {
   const [selectedEmailIds, setSelectedEmailIds] = useState([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const [messageActionLoading, setMessageActionLoading] = useState(false)
-  const [dateFormat, setDateFormat] = useState(() =>
-    localStorage.getItem('dateFormat') === 'american' ? 'american' : 'european'
-  )
-  const dateLocale = dateFormat === 'american' ? 'en-US' : 'en-GB'
+  const [dateFormat, setDateFormat] = useState(() => {
+    const saved = localStorage.getItem('dateFormat')
+    if (['ymd', 'dmy', 'mdy'].includes(saved)) return saved
+    return saved === 'american' ? 'mdy' : 'dmy'
+  })
+  const [dateSeparator, setDateSeparator] = useState(() => {
+    const saved = localStorage.getItem('dateSeparator')
+    return ['/', '.', '-'].includes(saved) ? saved : '/'
+  })
+  const mailboxRequest = useRef(0)
+  const nextMessageOffset = useRef(MESSAGE_PAGE_SIZE)
+  const loadingMoreMessages = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -47,32 +59,83 @@ function Layout() {
 
   useEffect(() => {
     let active = true
+    const request = ++mailboxRequest.current
     const tab = accountTabs.find((item) => item.name === selectedTab)
 
     setSelectedEmailIds([])
     setSelectedEmail(null)
+    setEmails([])
+    setEmailsLoading(false)
+    setHasMoreEmails(false)
+    setMoreEmailsLoading(false)
+    nextMessageOffset.current = MESSAGE_PAGE_SIZE
+    loadingMoreMessages.current = false
     if (!selectedAccount || !tab?.mailbox) {
-      setEmails([])
       return undefined
     }
 
     setEmailsLoading(true)
     setMailError('')
     window.mail
-      .syncMessages({ accountId: selectedAccount, mailbox: tab.mailbox, limit: 100 })
-      .then(async (messages) => {
-        if (!active) return
-        setEmails(messages)
-        const savedAccounts = await window.mail.listAccounts()
-        if (active) setAccounts(savedAccounts)
+      .syncMessages({
+        accountId: selectedAccount,
+        mailbox: tab.mailbox,
+        limit: MESSAGE_PAGE_SIZE,
+        offset: 0
       })
-      .catch((error) => active && setMailError(error.message))
-      .finally(() => active && setEmailsLoading(false))
+      .then(async (page) => {
+        if (!active || request !== mailboxRequest.current) return
+        setEmails(page.messages)
+        setHasMoreEmails(page.hasMore)
+        const savedAccounts = await window.mail.listAccounts()
+        if (active && request === mailboxRequest.current) setAccounts(savedAccounts)
+      })
+      .catch((error) => active && request === mailboxRequest.current && setMailError(error.message))
+      .finally(() => active && request === mailboxRequest.current && setEmailsLoading(false))
 
     return () => {
       active = false
     }
   }, [selectedAccount, selectedTab, refreshVersion])
+
+  const loadMoreMessages = useCallback(async () => {
+    const tab = accountTabs.find((item) => item.name === selectedTab)
+    if (
+      !selectedAccount ||
+      !tab?.mailbox ||
+      emailsLoading ||
+      !hasMoreEmails ||
+      loadingMoreMessages.current
+    ) {
+      return
+    }
+
+    const request = mailboxRequest.current
+    const offset = nextMessageOffset.current
+    loadingMoreMessages.current = true
+    setMoreEmailsLoading(true)
+    try {
+      const page = await window.mail.syncMessages({
+        accountId: selectedAccount,
+        mailbox: tab.mailbox,
+        limit: MESSAGE_PAGE_SIZE,
+        offset
+      })
+      if (request !== mailboxRequest.current) return
+
+      nextMessageOffset.current = offset + MESSAGE_PAGE_SIZE
+      setEmails((current) => {
+        const existing = new Set(current.map(({ id }) => id))
+        return [...current, ...page.messages.filter(({ id }) => !existing.has(id))]
+      })
+      setHasMoreEmails(page.hasMore)
+    } catch (error) {
+      if (request === mailboxRequest.current) setMailError(error.message)
+    } finally {
+      loadingMoreMessages.current = false
+      if (request === mailboxRequest.current) setMoreEmailsLoading(false)
+    }
+  }, [emailsLoading, hasMoreEmails, selectedAccount, selectedTab])
 
   const contacts = useMemo(
     () =>
@@ -265,12 +328,16 @@ function Layout() {
           selectedEmailId={selectedEmail?.id}
           selectedEmailIds={selectedEmailIds}
           bulkActionLoading={bulkActionLoading}
-          dateLocale={dateLocale}
+          loadingMore={moreEmailsLoading}
+          hasMore={hasMoreEmails}
+          dateFormat={dateFormat}
+          dateSeparator={dateSeparator}
           onSelectTab={setSelectedTab}
           onSelectionChange={setSelectedEmailIds}
           onOpen={openMessage}
           onSetFlag={setSelectedFlag}
           onMove={moveSelectedMessages}
+          onLoadMore={loadMoreMessages}
         />
 
         <EmailPanel
@@ -278,7 +345,8 @@ function Layout() {
           contacts={contacts}
           selectedAccount={selectedAccount}
           email={selectedEmail}
-          dateLocale={dateLocale}
+          dateFormat={dateFormat}
+          dateSeparator={dateSeparator}
           loading={selectedEmailLoading}
           actionLoading={messageActionLoading}
           mailbox={selectedTab}
@@ -293,9 +361,14 @@ function Layout() {
         open={settingsOpen}
         accounts={accounts}
         dateFormat={dateFormat}
+        dateSeparator={dateSeparator}
         onDateFormatChange={(value) => {
           setDateFormat(value)
           localStorage.setItem('dateFormat', value)
+        }}
+        onDateSeparatorChange={(value) => {
+          setDateSeparator(value)
+          localStorage.setItem('dateSeparator', value)
         }}
         onClose={() => setSettingsOpen(false)}
       />

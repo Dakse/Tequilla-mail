@@ -19,12 +19,28 @@ import {
   Card,
   CardContent,
   CardOverflow,
+  CircularProgress,
   Divider,
   ListSubheader,
   Sheet,
+  SvgIcon,
   Typography
 } from '@mui/joy'
 import TooltipIconButton from './TooltipIconButton'
+import { formatMessageDate } from './helpers'
+
+function AppLogo(props) {
+  return (
+    <SvgIcon viewBox="0 0 16 16" {...props}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M1 7L4.80061 1.43926C5.56059 0.527292 6.68638 0 7.8735 0H8V4L12 5L15 10L14.1875 11.2188C13.4456 12.3316 12.1967 13 10.8593 13H9L7 16H5L1 7ZM10 9C10.5523 9 11 8.55229 11 8C11 7.44772 10.5523 7 10 7C9.44771 7 9 7.44772 9 8C9 8.55229 9.44771 9 10 9Z"
+      />
+      <path d="M10 0.465878V2.43845L12 2.93845V0H11.8735C11.2125 0 10.5704 0.163501 10 0.465878Z" />
+    </SvgIcon>
+  )
+}
 
 function initials(value) {
   return String(value || '?')
@@ -43,6 +59,8 @@ function htmlDocument(html) {
     "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'"
   const responsiveStyles = document.createElement('style')
   responsiveStyles.textContent = `
+    :root { color-scheme: only light; }
+    html, body { overflow: hidden !important; }
     img { max-width: 100%; height: auto; }
     table { max-width: 100%; }
   `
@@ -54,7 +72,8 @@ function htmlDocument(html) {
 
 function EmailDisplay({
   email,
-  dateLocale,
+  dateFormat,
+  dateSeparator,
   loading,
   actionLoading,
   mailbox,
@@ -65,19 +84,21 @@ function EmailDisplay({
   if (!email) {
     return (
       <Box sx={{ display: 'grid', flex: 1, placeItems: 'center' }}>
-        <Typography level="body-lg" textColor="text.tertiary">
-          Select an email to read it.
-        </Typography>
+        <AppLogo
+          sx={{
+            width: 200,
+            height: 200,
+            color: (t) =>
+              t.palette.mode === 'dark' ? t.palette.neutral[700] : t.palette.neutral[400]
+          }}
+        />
       </Box>
     )
   }
 
   const sender = email.from?.name || email.from?.address || 'Unknown sender'
   const timestamp = email.date ? new Date(email.date) : null
-  const date =
-    timestamp && !Number.isNaN(timestamp.getTime())
-      ? timestamp.toLocaleDateString(dateLocale)
-      : ''
+  const date = formatMessageDate(email.date, dateFormat, dateSeparator)
   const time =
     timestamp && !Number.isNaN(timestamp.getTime())
       ? timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -189,12 +210,14 @@ function EmailDisplay({
         {email.subject}
       </Typography>
 
-      {loading || !email.html ? (
+      {loading ? (
+        <Card sx={{ minHeight: 120, display: 'grid', placeItems: 'center' }}>
+          <CircularProgress />
+        </Card>
+      ) : !email.html ? (
         <Card sx={{ overflowWrap: 'anywhere' }}>
           <Typography sx={{ whiteSpace: 'pre-wrap' }}>
-            {loading
-              ? 'Downloading message…'
-              : email.text || email.snippet || 'This message has no body.'}
+            {email.text || email.snippet || 'This message has no body.'}
           </Typography>
         </Card>
       ) : (
@@ -207,19 +230,33 @@ function EmailDisplay({
           <iframe
             title={email.subject || 'Email body'}
             sandbox="allow-same-origin"
+            scrolling="no"
             srcDoc={htmlDocument(email.html)}
             onLoad={(event) => {
               const frame = event.currentTarget
-              frame.style.height = `${Math.max(
-                120,
-                frame.contentDocument.documentElement.scrollHeight
-              )}px`
+              const document = frame.contentDocument
+              frame.emailResizeObserver?.disconnect()
+              frame.style.height = '120px'
+
+              const resize = () => {
+                frame.style.height = `${Math.max(
+                  120,
+                  document.documentElement.scrollHeight,
+                  document.body?.scrollHeight || 0
+                )}px`
+              }
+              frame.emailResizeObserver = new ResizeObserver(resize)
+              frame.emailResizeObserver.observe(document.documentElement)
+              if (document.body) frame.emailResizeObserver.observe(document.body)
+              resize()
             }}
             style={{
               display: 'block',
               width: '100%',
               minHeight: 120,
-              border: 0
+              border: 0,
+              colorScheme: 'light',
+              backgroundColor: '#fff'
             }}
           />
         </Card>

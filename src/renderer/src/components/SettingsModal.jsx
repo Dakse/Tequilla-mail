@@ -1,24 +1,83 @@
-import { DeleteForeverRounded } from '@mui/icons-material'
 import {
-  Alert,
-  Box,
-  Button,
-  Divider,
-  FormControl,
-  FormLabel,
-  Option,
-  Select,
-  Stack,
-  Typography
-} from '@mui/joy'
+  DarkModeRounded,
+  DeleteForeverRounded,
+  LightModeRounded,
+  MonitorRounded
+} from '@mui/icons-material'
+import { Alert, Button, Divider, Stack, Typography } from '@mui/joy'
 import { useColorScheme } from '@mui/joy/styles'
 import { useState } from 'react'
 import Modal from './Modal.jsx'
+import UniversalForm from './UniversalForm'
 
-function SettingsModal({ open, accounts, dateFormat, onDateFormatChange, onClose }) {
+function SettingsModal({
+  open,
+  accounts,
+  dateFormat,
+  dateSeparator,
+  onDateFormatChange,
+  onDateSeparatorChange,
+  onClose
+}) {
   const { mode, setMode } = useColorScheme()
   const [clearing, setClearing] = useState(false)
   const [error, setError] = useState('')
+  const fields = [
+    {
+      type: 'buttonGroup',
+      name: 'displayMode',
+      label: 'Display mode',
+      value: mode || 'dark',
+      onChange: setMode,
+      options: [
+        { value: 'light', label: 'Light mode', tooltip: 'Light mode', icon: LightModeRounded },
+        { value: 'dark', label: 'Dark mode', tooltip: 'Dark mode', icon: DarkModeRounded },
+        { value: 'system', label: 'System mode', tooltip: 'System mode', icon: MonitorRounded }
+      ]
+    },
+    {
+      type: 'radio',
+      name: 'dateFormat',
+      label: 'Date display format',
+      value: dateFormat,
+      onChange: onDateFormatChange,
+      options: [
+        { value: 'ymd', label: 'Year, Month, Day' },
+        { value: 'dmy', label: 'Day, Month, Year' },
+        { value: 'mdy', label: 'Month, Day, Year' }
+      ]
+    },
+    {
+      type: 'buttonGroup',
+      name: 'dateSeparator',
+      label: 'Date separator',
+      value: dateSeparator,
+      onChange: onDateSeparatorChange,
+      options: [
+        { value: '/', label: '/' },
+        { value: '.', label: '.' },
+        { value: '-', label: '-' }
+      ]
+    },
+    {
+      type: 'custom',
+      key: 'version',
+      sx: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+      render: () => (
+        <>
+          <Typography level="body-sm">Current app version</Typography>
+          <Typography level="body-sm" fontWeight="lg">
+            0.0.1
+          </Typography>
+        </>
+      )
+    },
+    {
+      type: 'custom',
+      key: 'divider',
+      render: () => <Divider />
+    }
+  ]
 
   async function clearAllData() {
     if (!window.confirm('Clear all accounts, downloaded mail, attachments, and preferences?'))
@@ -47,43 +106,20 @@ function SettingsModal({ open, accounts, dateFormat, onDateFormatChange, onClose
       <Stack spacing={2}>
         {error && <Alert color="danger">{error}</Alert>}
 
-        <FormControl>
-          <FormLabel>Display mode</FormLabel>
-          <Select value={mode || 'dark'} onChange={(_event, value) => value && setMode(value)}>
-            <Option value="light">Light</Option>
-            <Option value="dark">Dark</Option>
-            <Option value="system">System</Option>
-          </Select>
-        </FormControl>
-
-        <FormControl>
-          <FormLabel>Date display format</FormLabel>
-          <Select
-            value={dateFormat}
-            onChange={(_event, value) => value && onDateFormatChange(value)}
-          >
-            <Option value="american">American (MM/DD/YYYY)</Option>
-            <Option value="european">European (DD/MM/YYYY)</Option>
-          </Select>
-        </FormControl>
-
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography level="body-sm">Current app version</Typography>
-          <Typography level="body-sm" fontWeight="lg">
-            0.0.1
-          </Typography>
-        </Box>
-
-        <Divider />
-        <Button
-          color="danger"
-          variant="outlined"
-          loading={clearing}
-          startDecorator={<DeleteForeverRounded />}
-          onClick={clearAllData}
-        >
-          Clear all data
-        </Button>
+        <UniversalForm
+          fields={fields}
+          actions={() => (
+            <Button
+              color="danger"
+              variant="outlined"
+              loading={clearing}
+              startDecorator={<DeleteForeverRounded />}
+              onClick={clearAllData}
+            >
+              Clear all data
+            </Button>
+          )}
+        />
       </Stack>
     </Modal>
   )

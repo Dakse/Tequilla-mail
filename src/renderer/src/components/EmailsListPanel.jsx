@@ -1,9 +1,15 @@
 import {
   DeleteRounded,
+  DraftsOutlined,
   FilterAlt,
   FolderDeleteRounded,
   MarkEmailReadRounded,
   MarkEmailUnreadRounded,
+  PersonAddAlt,
+  PersonAddAlt1Rounded,
+  PersonAddAltRounded,
+  PersonOff,
+  PersonRounded,
   RestoreFromTrashRounded,
   StarBorderRounded,
   StarRounded,
@@ -23,17 +29,13 @@ import {
   CircularProgress,
   Divider,
   Dropdown,
-  FormControl,
-  FormLabel,
   Input,
   List,
   ListItemButton,
   Menu,
   MenuButton,
   MenuItem,
-  Option,
   Radio,
-  Select,
   Stack,
   Tooltip,
   Typography
@@ -43,6 +45,7 @@ import { Panel } from 'react-resizable-panels'
 import { List as VirtualList } from 'react-window'
 import { emptyMessageFilters, filterMessages } from '../message-filters'
 import TooltipIconButton from './TooltipIconButton'
+import UniversalForm from './UniversalForm'
 import { accountTabs, formatMessageDate, initials } from './helpers'
 
 function emailRowKey(index, { emails }) {
@@ -56,7 +59,8 @@ function EmailRow({
   emails,
   openedEmailId,
   selectedEmailIds,
-  dateLocale,
+  dateFormat,
+  dateSeparator,
   onOpen,
   onToggle
 }) {
@@ -104,14 +108,30 @@ function EmailRow({
             }}
             endDecorator={
               <Typography noWrap variant="caption" fontWeight={400} level="body-xs">
-                {formatMessageDate(email.date, dateLocale)}
+                {formatMessageDate(email.date, dateFormat, dateSeparator)}
               </Typography>
             }
             noWrap
           >
             {email.from?.name || email.from?.address || 'Unknown sender'}
           </Typography>
-          <Typography lineHeight={1} level="body-md" fontWeight="bold" noWrap>
+          <Typography
+            endDecorator={
+              <Typography noWrap variant="caption" fontWeight={400} level="body-xs">
+                {new Date(email.date).toLocaleTimeString('en-GB', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Typography>
+            }
+            slotProps={{
+              endDecorator: { sx: { ml: 'auto' } }
+            }}
+            lineHeight={1}
+            level="body-md"
+            fontWeight="bold"
+            noWrap
+          >
             {email.subject}
           </Typography>
           <Typography level="body-md" variant="caption" noWrap>
@@ -132,12 +152,16 @@ function EmailsListPanel({
   selectedEmailId,
   selectedEmailIds,
   bulkActionLoading,
-  dateLocale,
+  loadingMore,
+  hasMore,
+  dateFormat,
+  dateSeparator,
   onSelectTab,
   onSelectionChange,
   onOpen,
   onSetFlag,
-  onMove
+  onMove,
+  onLoadMore
 }) {
   const [sortOption, setSortOption] = useState('newest')
   const [filterOpen, setFilterOpen] = useState(false)
@@ -163,17 +187,96 @@ function EmailsListPanel({
       emails: displayedEmails,
       openedEmailId: selectedEmailId,
       selectedEmailIds,
-      dateLocale,
+      dateFormat,
+      dateSeparator,
       onOpen,
       onToggle: toggleSelection
     }),
-    [dateLocale, displayedEmails, onOpen, selectedEmailId, selectedEmailIds, toggleSelection]
+    [
+      dateFormat,
+      dateSeparator,
+      displayedEmails,
+      onOpen,
+      selectedEmailId,
+      selectedEmailIds,
+      toggleSelection
+    ]
+  )
+  const handleRowsRendered = useCallback(
+    ({ stopIndex }) => {
+      if (hasMore && !loadingMore && stopIndex >= displayedEmails.length - 5) onLoadMore()
+    },
+    [displayedEmails.length, hasMore, loadingMore, onLoadMore]
   )
 
   function updateFilter(name, value) {
     setMessageFilters((current) => ({ ...current, [name]: value }))
     onSelectionChange([])
   }
+
+  const filterFields = [
+    {
+      name: 'from',
+      label: 'From',
+      value: messageFilters.from,
+      onChange: (value) => updateFilter('from', value),
+      props: { size: 'sm', placeholder: 'Email address or username' }
+    },
+    {
+      name: 'to',
+      label: 'To',
+      value: messageFilters.to,
+      onChange: (value) => updateFilter('to', value),
+      props: { size: 'sm', placeholder: 'Email address or username' }
+    },
+    {
+      name: 'subject',
+      label: 'Subject',
+      value: messageFilters.subject,
+      onChange: (value) => updateFilter('subject', value),
+      sx: { gridColumn: '1 / -1' },
+      props: { size: 'sm', placeholder: 'Subject' }
+    },
+    {
+      name: 'words',
+      label: 'Includes words',
+      value: messageFilters.words,
+      onChange: (value) => updateFilter('words', value),
+      sx: { gridColumn: '1 / -1' },
+      props: { size: 'sm', placeholder: 'Keywords' }
+    },
+    {
+      name: 'dateFrom',
+      label: 'From date',
+      value: messageFilters.dateFrom,
+      onChange: (value) => updateFilter('dateFrom', value),
+      props: { size: 'sm', type: 'date' }
+    },
+    {
+      name: 'dateTo',
+      label: 'To date',
+      value: messageFilters.dateTo,
+      onChange: (value) => updateFilter('dateTo', value),
+      props: { size: 'sm', type: 'date' }
+    },
+    {
+      type: 'select',
+      name: 'folder',
+      label: 'Folder to search',
+      value: selectedTab,
+      onChange: onSelectTab,
+      options: accountTabs.map(({ name }) => name),
+      props: { size: 'sm' }
+    },
+    {
+      type: 'checkbox',
+      name: 'hasAttachment',
+      label: 'Has attachment',
+      value: messageFilters.hasAttachment,
+      onChange: (value) => updateFilter('hasAttachment', value),
+      sx: { display: 'flex', alignItems: 'end', pb: 0.5 }
+    }
+  ]
 
   return (
     <Box
@@ -182,8 +285,11 @@ function EmailsListPanel({
       maxSize="60%"
       sx={{
         zIndex: 2,
-        boxShadow: (theme) => theme.shadow.lg,
-        background: (theme) => theme.palette.background.surface,
+
+        background: (theme) =>
+          theme.palette.mode === 'dark'
+            ? theme.palette.background.body
+            : theme.palette.background.level2,
         overflow: 'hidden !important',
         display: 'flex',
         flexDirection: 'column',
@@ -272,94 +378,24 @@ function EmailsListPanel({
                   pb: 1
                 }}
               >
-                <FormControl>
-                  <FormLabel>From</FormLabel>
-                  <Input
-                    size="sm"
-                    placeholder="Email address or username"
-                    value={messageFilters.from}
-                    onChange={(event) => updateFilter('from', event.target.value)}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>To</FormLabel>
-                  <Input
-                    size="sm"
-                    placeholder="Email address or username"
-                    value={messageFilters.to}
-                    onChange={(event) => updateFilter('to', event.target.value)}
-                  />
-                </FormControl>
-                <FormControl sx={{ gridColumn: '1 / -1' }}>
-                  <FormLabel>Subject</FormLabel>
-                  <Input
-                    size="sm"
-                    placeholder="Subject"
-                    value={messageFilters.subject}
-                    onChange={(event) => updateFilter('subject', event.target.value)}
-                  />
-                </FormControl>
-                <FormControl sx={{ gridColumn: '1 / -1' }}>
-                  <FormLabel>Includes words</FormLabel>
-                  <Input
-                    size="sm"
-                    placeholder="Keywords"
-                    value={messageFilters.words}
-                    onChange={(event) => updateFilter('words', event.target.value)}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>From date</FormLabel>
-                  <Input
-                    size="sm"
-                    type="date"
-                    value={messageFilters.dateFrom}
-                    onChange={(event) => updateFilter('dateFrom', event.target.value)}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>To date</FormLabel>
-                  <Input
-                    size="sm"
-                    type="date"
-                    value={messageFilters.dateTo}
-                    onChange={(event) => updateFilter('dateTo', event.target.value)}
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Folder to search</FormLabel>
-                  <Select
-                    size="sm"
-                    value={selectedTab}
-                    onChange={(_event, value) => value && onSelectTab(value)}
-                  >
-                    {accountTabs.map(({ name }) => (
-                      <Option key={name} value={name}>
-                        {name}
-                      </Option>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Box sx={{ display: 'flex', alignItems: 'end', pb: 0.5 }}>
-                  <Checkbox
-                    label="Has attachment"
-                    checked={messageFilters.hasAttachment}
-                    onChange={(event) => updateFilter('hasAttachment', event.target.checked)}
-                  />
-                </Box>
-                <Button
-                  size="sm"
-                  variant="plain"
-                  color="neutral"
-                  disabled={!filtersActive}
-                  sx={{ gridColumn: '1 / -1', justifySelf: 'end' }}
-                  onClick={() => {
-                    setMessageFilters({ ...emptyMessageFilters })
-                    onSelectionChange([])
-                  }}
-                >
-                  Clear filters
-                </Button>
+                <UniversalForm
+                  fields={filterFields}
+                  actions={() => (
+                    <Button
+                      size="sm"
+                      variant="plain"
+                      color="neutral"
+                      disabled={!filtersActive}
+                      sx={{ gridColumn: '1 / -1', justifySelf: 'end' }}
+                      onClick={() => {
+                        setMessageFilters({ ...emptyMessageFilters })
+                        onSelectionChange([])
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                />
               </Box>
             </AccordionDetails>
           </Accordion>
@@ -436,7 +472,7 @@ function EmailsListPanel({
         <Divider />
       </Box>
 
-      <List component="div" sx={{ flex: 1, minHeight: 0, p: 0 }}>
+      <List component="div" sx={{ position: 'relative', flex: 1, minHeight: 0, p: 0 }}>
         {loading && (
           <Box sx={{ p: 2, alignItems: 'center', justifyContent: 'center', display: 'flex' }}>
             <CircularProgress />
@@ -448,11 +484,53 @@ function EmailsListPanel({
           </Alert>
         )}
         {!loading && !error && selectedAccount && displayedEmails.length === 0 && (
-          <Typography sx={{ p: 2 }}>
-            {filtersActive ? 'No messages match these filters.' : 'No messages in this mailbox.'}
-          </Typography>
+          <Box sx={{ display: 'grid', flex: 1, placeItems: 'center' }}>
+            <DraftsOutlined
+              sx={{
+                fontSize: 200,
+                color: (t) =>
+                  t.palette.mode === 'dark' ? t.palette.neutral[700] : t.palette.neutral[400]
+              }}
+            />
+            <Typography
+              level="body-lg"
+              sx={{
+                color: (t) =>
+                  t.palette.mode === 'dark' ? t.palette.neutral[600] : t.palette.neutral[400]
+              }}
+            >
+              {filtersActive ? 'No messages match these filters.' : 'No messages in this mailbox.'}
+            </Typography>
+          </Box>
         )}
-        {!selectedAccount && <Typography sx={{ p: 2 }}>Add an account to get started.</Typography>}
+        {!selectedAccount && (
+          <Box
+            sx={{
+              display: 'flex',
+              flex: 1,
+              justifyContent: 'center',
+              flexDirection: 'column',
+              alignItems: 'center'
+            }}
+          >
+            <PersonRounded
+              sx={{
+                fontSize: 200,
+                color: (t) =>
+                  t.palette.mode === 'dark' ? t.palette.neutral[700] : t.palette.neutral[400]
+              }}
+            />
+            <Typography
+              level="body-lg"
+              sx={{
+                color: (t) =>
+                  t.palette.mode === 'dark' ? t.palette.neutral[600] : t.palette.neutral[400]
+              }}
+            >
+              Add an account to get started
+            </Typography>
+          </Box>
+        )}
         {displayedEmails.length > 0 && (
           <VirtualList
             rowComponent={EmailRow}
@@ -461,8 +539,26 @@ function EmailsListPanel({
             rowKey={emailRowKey}
             rowProps={rowProps}
             overscanCount={4}
+            onRowsRendered={handleRowsRendered}
             style={{ height: '100%', width: '100%' }}
           />
+        )}
+        {loadingMore && (
+          <Box
+            sx={{
+              position: 'absolute',
+              bottom: 8,
+              left: '50%',
+              zIndex: 1,
+              display: 'flex',
+              p: 0.75,
+              borderRadius: '50%',
+              bgcolor: 'background.surface',
+              transform: 'translateX(-50%)'
+            }}
+          >
+            <CircularProgress size="sm" />
+          </Box>
         )}
       </List>
     </Box>

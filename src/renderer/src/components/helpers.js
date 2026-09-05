@@ -25,16 +25,20 @@ export function emailAddresses(value) {
   return (Array.isArray(value) ? value : [value]).map((item) => item?.address).filter(Boolean)
 }
 
-export function formatMessageDate(value, locale) {
+export function formatMessageDate(value, format = 'dmy', separator = '/') {
   if (!value) return ''
   const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? ''
-    : new Intl.DateTimeFormat(locale, {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(date)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const year = String(date.getFullYear())
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const parts = {
+    ymd: [year, month, day],
+    dmy: [day, month, year],
+    mdy: [month, day, year]
+  }
+  return (parts[format] || parts.dmy).join(separator)
 }
 
 export function withMessageFlag(message, flag, enabled) {

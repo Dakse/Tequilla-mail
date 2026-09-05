@@ -37,11 +37,14 @@ function AccountsPanel({
       sx={{
         boxShadow: (theme) => theme.shadow.lg,
         zIndex: 3,
-        background: (theme) => theme.palette.background.backdrop
+        background: (theme) =>
+          theme.palette.mode === 'dark'
+            ? theme.palette.background.backdrop
+            : theme.palette.background.body
       }}
     >
-      <AccordionGroup sx={{ gap: 1 }}>
-        <ListSubheader sx={{ mt: 1, flex: 1, justifyContent: 'space-between', py: 0 }}>
+      <AccordionGroup sx={{ gap: 1, height: '100%', minHeight: 0, overflowY: 'auto' }}>
+        <ListSubheader sx={{ mt: 1, justifyContent: 'space-between', py: 0 }}>
           Accounts
           <Box sx={{ borderRadius: 'md', justifyContent: 'space-around', display: 'flex', gap: 1 }}>
             <TooltipIconButton aria-label="App settings" variant="outlined" onClick={onSettings}>
@@ -57,7 +60,8 @@ function AccountsPanel({
             </TooltipIconButton>
             <TooltipIconButton
               aria-label="Create email"
-              variant="outlined"
+              variant={accounts.length ? 'soft' : 'outlined'}
+              color={accounts.length ? 'primary' : undefined}
               disabled={!selectedAccount}
               onClick={onCompose}
             >
@@ -108,7 +112,7 @@ function AccountsPanel({
                     <ListItemButton
                       key={tab.name}
                       selected={selectedAccount === account.id && selectedTab === tab.name}
-                      sx={{ pl: 2 }}
+                      sx={{ pl: 2.5 }}
                       onClick={() => onSelect(account.id, tab.name)}
                     >
                       <Typography
@@ -129,24 +133,27 @@ function AccountsPanel({
           </Accordion>
         ))}
 
-        <Divider sx={{ mx: 1.5 }} />
-        <List size="lg">
-          <ListItemButton
-            variant="outlined"
-            sx={{ borderRadius: 'md', mx: 1, px: 1 }}
-            onClick={onAddAccount}
-          >
-            <Typography
-              width="100%"
-              textAlign="center"
-              lineHeight={1}
-              sx={{ gap: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <Box sx={{ mt: 'auto', flexShrink: 0 }}>
+          {accounts.length ? <Divider sx={{ mx: 1.5, mb: 1.5 }} /> : null}
+          <List size="lg">
+            <ListItemButton
+              color={accounts.length ? undefined : 'primary'}
+              variant={accounts.length ? 'outlined' : 'soft'}
+              sx={{ borderRadius: 'md', mx: 1, px: 1, mb: 1.5 }}
+              onClick={onAddAccount}
             >
-              <Add />
-              Add account
-            </Typography>
-          </ListItemButton>
-        </List>
+              <Typography
+                width="100%"
+                textAlign="center"
+                lineHeight={1}
+                sx={{ gap: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Add />
+                Add account
+              </Typography>
+            </ListItemButton>
+          </List>
+        </Box>
       </AccordionGroup>
     </Box>
   )

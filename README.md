@@ -1,4 +1,4 @@
-# daks-mail
+# TequillaMail
 
 An Electron application with React
 

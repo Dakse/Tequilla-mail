@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { emptyMessageFilters, filterMessages } from '../renderer/src/message-filters.js'
+import { emptyMessageFilters, filterMessages } from '../src/renderer/src/message-filters.js'
 
 test('filters message summaries by people, words, date, and attachment', () => {
   const messages = [

@@ -1,6 +1,27 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { connectionError, publicMessage, selectMailbox } from './mail-service.js'
+import {
+  connectionError,
+  messageSequencePage,
+  publicMessage,
+  selectMailbox
+} from '../src/main/mail-service.js'
+
+test('pages backward through IMAP sequence numbers', () => {
+  assert.deepEqual(messageSequencePage(250, 50, 0), {
+    range: '201:250',
+    hasMore: true,
+    limit: 50,
+    offset: 0
+  })
+  assert.deepEqual(messageSequencePage(250, 50, 200), {
+    range: '1:50',
+    hasMore: false,
+    limit: 50,
+    offset: 200
+  })
+  assert.equal(messageSequencePage(250, 50, 250).range, null)
+})
 
 test('creates thumbnails without exposing attachment paths', async () => {
   const message = await publicMessage(
