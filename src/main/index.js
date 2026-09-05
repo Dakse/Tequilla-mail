@@ -1,12 +1,50 @@
-import { app, shell, BrowserWindow, nativeImage, safeStorage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, nativeImage, safeStorage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import electronUpdater from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 import { openDatabase } from './database'
 import { registerMailIpc } from './ipc'
 import { createMailService } from './mail-service'
 
+const { autoUpdater } = electronUpdater
 let store
+let updateState = { status: 'idle', currentVersion: '', availableVersion: null }
+
+function setUpdateState(changes) {
+  updateState = { ...updateState, ...changes }
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('app:update:state', updateState)
+  }
+}
+
+function registerUpdater() {
+  updateState.currentVersion = app.getVersion()
+  ipcMain.handle('app:update:get-state', () => updateState)
+  ipcMain.handle('app:update:install', async () => {
+    if (!app.isPackaged || !updateState.availableVersion) return false
+    if (updateState.status !== 'downloaded') await autoUpdater.downloadUpdate()
+    setImmediate(() => autoUpdater.quitAndInstall())
+    return true
+  })
+
+  if (!app.isPackaged) return
+  autoUpdater.autoDownload = false
+  autoUpdater.on('checking-for-update', () => setUpdateState({ status: 'checking' }))
+  autoUpdater.on('update-available', ({ version }) =>
+    setUpdateState({ status: 'available', availableVersion: version })
+  )
+  autoUpdater.on('update-not-available', () =>
+    setUpdateState({ status: 'current', availableVersion: null })
+  )
+  autoUpdater.on('download-progress', () => setUpdateState({ status: 'downloading' }))
+  autoUpdater.on('update-downloaded', () => setUpdateState({ status: 'downloaded' }))
+  autoUpdater.on('error', (error) => {
+    console.error('Auto-update failed:', error)
+    setUpdateState({ status: 'error' })
+  })
+  autoUpdater.checkForUpdates().catch(() => {})
+}
 
 function createWindow() {
   // Create the browser window.
@@ -29,7 +67,8 @@ function createWindow() {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    const url = new URL(details.url)
+    if (url.protocol === 'http:' || url.protocol === 'https:') shell.openExternal(url.href)
     return { action: 'deny' }
   })
 
@@ -58,6 +97,7 @@ app.whenReady().then(() => {
 
   store = openDatabase(app.getPath('userData'))
   registerMailIpc(createMailService(store, safeStorage, nativeImage))
+  registerUpdater()
 
   createWindow()
 

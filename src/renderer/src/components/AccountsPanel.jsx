@@ -6,6 +6,7 @@ import {
   AccordionGroup,
   AccordionSummary,
   Avatar,
+  Badge,
   Box,
   Divider,
   List,
@@ -22,6 +23,7 @@ function AccountsPanel({
   selectedAccount,
   selectedTab,
   loading,
+  updateAvailable,
   onSettings,
   onRefresh,
   onCompose,
@@ -47,9 +49,11 @@ function AccountsPanel({
         <ListSubheader sx={{ mt: 1, justifyContent: 'space-between', py: 0 }}>
           Accounts
           <Box sx={{ borderRadius: 'md', justifyContent: 'space-around', display: 'flex', gap: 1 }}>
-            <TooltipIconButton aria-label="App settings" variant="outlined" onClick={onSettings}>
-              <SettingsRounded />
-            </TooltipIconButton>
+            <Badge invisible={!updateAvailable}>
+              <TooltipIconButton aria-label="App settings" variant="outlined" onClick={onSettings}>
+                <SettingsRounded />
+              </TooltipIconButton>
+            </Badge>
             <TooltipIconButton
               aria-label="Refresh messages"
               variant="outlined"

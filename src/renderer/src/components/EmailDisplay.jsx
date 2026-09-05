@@ -53,6 +53,11 @@ function initials(value) {
 
 function htmlDocument(html) {
   const document = new DOMParser().parseFromString(html, 'text/html')
+  for (const link of document.querySelectorAll('a, area')) {
+    link.setAttribute('target', '_blank')
+    link.setAttribute('rel', 'noopener noreferrer')
+  }
+  document.querySelectorAll('meta[http-equiv="refresh" i]').forEach((meta) => meta.remove())
   const policy = document.createElement('meta')
   policy.httpEquiv = 'Content-Security-Policy'
   policy.content =
@@ -229,7 +234,7 @@ function EmailDisplay({
         >
           <iframe
             title={email.subject || 'Email body'}
-            sandbox="allow-same-origin"
+            sandbox="allow-popups allow-same-origin"
             scrolling="no"
             srcDoc={htmlDocument(email.html)}
             onLoad={(event) => {

@@ -6,6 +6,7 @@ import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
 import nodemailer from 'nodemailer'
 
+
 function requiredString(value, label) {
   const result = String(value || '').trim()
   if (!result) throw new Error(`${label} is required`)

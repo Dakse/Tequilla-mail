@@ -2,12 +2,14 @@ import {
   DarkModeRounded,
   DeleteForeverRounded,
   LightModeRounded,
-  MonitorRounded
+  MonitorRounded,
+  SystemUpdateAltRounded
 } from '@mui/icons-material'
 import { Alert, Button, Divider, Stack, Typography } from '@mui/joy'
 import { useColorScheme } from '@mui/joy/styles'
 import { useState } from 'react'
 import Modal from './Modal.jsx'
+import TooltipIconButton from './TooltipIconButton'
 import UniversalForm from './UniversalForm'
 
 function SettingsModal({
@@ -15,12 +17,14 @@ function SettingsModal({
   accounts,
   dateFormat,
   dateSeparator,
+  updateState,
   onDateFormatChange,
   onDateSeparatorChange,
   onClose
 }) {
   const { mode, setMode } = useColorScheme()
   const [clearing, setClearing] = useState(false)
+  const [installing, setInstalling] = useState(false)
   const [error, setError] = useState('')
   const fields = [
     {
@@ -66,9 +70,22 @@ function SettingsModal({
       render: () => (
         <>
           <Typography level="body-sm">Current app version</Typography>
-          <Typography level="body-sm" fontWeight="lg">
-            0.0.1
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography level="body-sm" fontWeight="lg">
+              {updateState.currentVersion}
+            </Typography>
+            {updateState.availableVersion && (
+              <TooltipIconButton
+                aria-label={`Update to ${updateState.availableVersion}`}
+                color="primary"
+                variant="soft"
+                loading={installing}
+                onClick={installUpdate}
+              >
+                <SystemUpdateAltRounded />
+              </TooltipIconButton>
+            )}
+          </Stack>
         </>
       )
     },
@@ -78,6 +95,17 @@ function SettingsModal({
       render: () => <Divider />
     }
   ]
+
+  async function installUpdate() {
+    setInstalling(true)
+    setError('')
+    try {
+      if (!(await window.updater.install())) setInstalling(false)
+    } catch (updateError) {
+      setError(updateError.message)
+      setInstalling(false)
+    }
+  }
 
   async function clearAllData() {
     if (!window.confirm('Clear all accounts, downloaded mail, attachments, and preferences?'))

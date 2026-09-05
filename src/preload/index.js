@@ -17,12 +17,24 @@ const mail = {
   saveAttachment: (attachmentId) => ipcRenderer.invoke('mail:attachments:save', attachmentId)
 }
 
+const updater = {
+  getState: () => ipcRenderer.invoke('app:update:get-state'),
+  install: () => ipcRenderer.invoke('app:update:install'),
+  onStateChange: (callback) => {
+    const listener = (_event, state) => callback(state)
+    ipcRenderer.on('app:update:state', listener)
+    return () => ipcRenderer.removeListener('app:update:state', listener)
+  }
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('mail', mail)
+    contextBridge.exposeInMainWorld('updater', updater)
   } catch (error) {
     console.error(error)
   }
 } else {
   window.mail = mail
+  window.updater = updater
 }

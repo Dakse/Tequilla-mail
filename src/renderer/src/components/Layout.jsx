@@ -29,6 +29,11 @@ function Layout() {
   const [selectedEmailIds, setSelectedEmailIds] = useState([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const [messageActionLoading, setMessageActionLoading] = useState(false)
+  const [updateState, setUpdateState] = useState({
+    status: 'idle',
+    currentVersion: '',
+    availableVersion: null
+  })
   const [dateFormat, setDateFormat] = useState(() => {
     const saved = localStorage.getItem('dateFormat')
     if (['ymd', 'dmy', 'mdy'].includes(saved)) return saved
@@ -54,6 +59,19 @@ function Layout() {
       .catch((error) => active && setMailError(error.message))
     return () => {
       active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const unsubscribe = window.updater.onStateChange((state) => active && setUpdateState(state))
+    window.updater
+      .getState()
+      .then((state) => active && setUpdateState(state))
+      .catch(() => {})
+    return () => {
+      active = false
+      unsubscribe()
     }
   }, [])
 
@@ -305,6 +323,7 @@ function Layout() {
           selectedAccount={selectedAccount}
           selectedTab={selectedTab}
           loading={emailsLoading}
+          updateAvailable={Boolean(updateState.availableVersion)}
           onSettings={() => setSettingsOpen(true)}
           onRefresh={() => setRefreshVersion((version) => version + 1)}
           onCompose={() => setEmailEditorOpen(true)}
@@ -362,6 +381,7 @@ function Layout() {
         accounts={accounts}
         dateFormat={dateFormat}
         dateSeparator={dateSeparator}
+        updateState={updateState}
         onDateFormatChange={(value) => {
           setDateFormat(value)
           localStorage.setItem('dateFormat', value)
