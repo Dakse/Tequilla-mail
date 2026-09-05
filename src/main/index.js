@@ -9,6 +9,7 @@ import { createMailService } from './mail-service'
 
 const { autoUpdater } = electronUpdater
 let store
+let mailService
 let updateState = { status: 'idle', currentVersion: '', availableVersion: null }
 
 function setUpdateState(changes) {
@@ -96,7 +97,8 @@ app.whenReady().then(() => {
   })
 
   store = openDatabase(app.getPath('userData'))
-  registerMailIpc(createMailService(store, safeStorage, nativeImage))
+  mailService = createMailService(store, safeStorage, nativeImage)
+  registerMailIpc(mailService)
   registerUpdater()
 
   createWindow()
@@ -118,6 +120,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', () => {
+  mailService?.closeSync()
   store?.close()
 })
 

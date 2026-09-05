@@ -46,7 +46,7 @@ import { List as VirtualList } from 'react-window'
 import { emptyMessageFilters, filterMessages } from '../message-filters'
 import TooltipIconButton from './TooltipIconButton'
 import UniversalForm from './UniversalForm'
-import { accountTabs, formatMessageDate, initials } from './helpers'
+import { accountTabs, formatMessageDate, initials, messageContact } from './helpers'
 
 function emailRowKey(index, { emails }) {
   return emails[index].id
@@ -57,6 +57,7 @@ function EmailRow({
   index,
   style,
   emails,
+  showRecipients,
   openedEmailId,
   selectedEmailIds,
   dateFormat,
@@ -65,6 +66,7 @@ function EmailRow({
   onToggle
 }) {
   const email = emails[index]
+  const contact = messageContact(email, showRecipients)
 
   return (
     <Box {...ariaAttributes} style={style} sx={{ boxSizing: 'border-box', py: 0.25 }}>
@@ -95,8 +97,8 @@ function EmailRow({
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onToggle(email.id, event.target.checked)}
         />
-        <Avatar src={email.from?.avatar}>
-          {initials(email.from?.name || email.from?.address)}
+        <Avatar src={contact.primary?.avatar}>
+          {initials(contact.primary?.name || contact.primary?.address)}
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography
@@ -113,7 +115,7 @@ function EmailRow({
             }
             noWrap
           >
-            {email.from?.name || email.from?.address || 'Unknown sender'}
+            {contact.label}
           </Typography>
           <Typography
             endDecorator={
@@ -135,7 +137,7 @@ function EmailRow({
             {email.subject}
           </Typography>
           <Typography level="body-md" variant="caption" noWrap>
-            {email.snippet || email.from?.address}
+            {email.snippet || contact.addresses}
           </Typography>
         </Box>
       </ListItemButton>
@@ -185,6 +187,7 @@ function EmailsListPanel({
   const rowProps = useMemo(
     () => ({
       emails: displayedEmails,
+      showRecipients: selectedTab === 'Sent',
       openedEmailId: selectedEmailId,
       selectedEmailIds,
       dateFormat,
@@ -197,6 +200,7 @@ function EmailsListPanel({
       dateSeparator,
       displayedEmails,
       onOpen,
+      selectedTab,
       selectedEmailId,
       selectedEmailIds,
       toggleSelection
@@ -484,7 +488,15 @@ function EmailsListPanel({
           </Alert>
         )}
         {!loading && !error && selectedAccount && displayedEmails.length === 0 && (
-          <Box sx={{ display: 'grid', flex: 1, placeItems: 'center' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flex: 1,
+              justifyContent: 'center',
+              flexDirection: 'column',
+              alignItems: 'center'
+            }}
+          >
             <DraftsOutlined
               sx={{
                 fontSize: 200,

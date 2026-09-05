@@ -43,6 +43,10 @@ function Layout() {
     const saved = localStorage.getItem('dateSeparator')
     return ['/', '.', '-'].includes(saved) ? saved : '/'
   })
+  const [syncMode, setSyncMode] = useState(() => {
+    const saved = localStorage.getItem('syncMode')
+    return ['sync', 'no-sync', 'manual'].includes(saved) ? saved : 'sync'
+  })
   const mailboxRequest = useRef(0)
   const nextMessageOffset = useRef(MESSAGE_PAGE_SIZE)
   const loadingMoreMessages = useRef(false)
@@ -61,6 +65,30 @@ function Layout() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    const unsubscribe = window.mail.onMessagesChanged((change) => {
+      window.mail
+        .listAccounts()
+        .then(setAccounts)
+        .catch(() => {})
+
+      if (change.accountId !== selectedAccount || selectedTab !== 'Inbox') return
+      if (change.error) {
+        setMailError(change.error)
+        return
+      }
+
+      setEmails(change.page.messages)
+      setHasMoreEmails(change.page.hasMore)
+      nextMessageOffset.current = MESSAGE_PAGE_SIZE
+    })
+    return unsubscribe
+  }, [selectedAccount, selectedTab])
+
+  useEffect(() => {
+    window.mail.setSyncMode(syncMode).catch((error) => setMailError(error.message))
+  }, [syncMode])
 
   useEffect(() => {
     let active = true
@@ -381,6 +409,7 @@ function Layout() {
         accounts={accounts}
         dateFormat={dateFormat}
         dateSeparator={dateSeparator}
+        syncMode={syncMode}
         updateState={updateState}
         onDateFormatChange={(value) => {
           setDateFormat(value)
@@ -389,6 +418,10 @@ function Layout() {
         onDateSeparatorChange={(value) => {
           setDateSeparator(value)
           localStorage.setItem('dateSeparator', value)
+        }}
+        onSyncModeChange={(value) => {
+          setSyncMode(value)
+          localStorage.setItem('syncMode', value)
         }}
         onClose={() => setSettingsOpen(false)}
       />

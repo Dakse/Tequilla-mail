@@ -4,7 +4,8 @@ import {
   connectionError,
   messageSequencePage,
   publicMessage,
-  selectMailbox
+  selectMailbox,
+  syncPolicy
 } from '../src/main/mail-service.js'
 
 test('pages backward through IMAP sequence numbers', () => {
@@ -65,4 +66,11 @@ test('connection errors include the safe server response without the IMAP comman
     connectionError('IMAP verification failed', cause).message,
     'IMAP verification failed: Authentication failed'
   )
+})
+
+test('maps synchronization modes to timed and IDLE behavior', () => {
+  assert.deepEqual(syncPolicy('sync'), { idle: true, timed: true })
+  assert.deepEqual(syncPolicy('no-sync'), { idle: false, timed: true })
+  assert.deepEqual(syncPolicy('manual'), { idle: false, timed: false })
+  assert.throws(() => syncPolicy('invalid'), /Invalid sync mode/)
 })

@@ -8,6 +8,12 @@ const mail = {
     ipcRenderer.invoke('mail:accounts:update', accountId, account),
   deleteAccount: (accountId) => ipcRenderer.invoke('mail:accounts:delete', accountId),
   listMailboxes: (accountId) => ipcRenderer.invoke('mail:mailboxes:list', accountId),
+  setSyncMode: (mode) => ipcRenderer.invoke('mail:sync:set-mode', mode),
+  onMessagesChanged: (callback) => {
+    const listener = (_event, change) => callback(change)
+    ipcRenderer.on('mail:messages:changed', listener)
+    return () => ipcRenderer.removeListener('mail:messages:changed', listener)
+  },
   syncMessages: (request) => ipcRenderer.invoke('mail:messages:sync', request),
   getMessage: (messageId) => ipcRenderer.invoke('mail:messages:get', messageId),
   setMessageFlag: (request) => ipcRenderer.invoke('mail:messages:set-flag', request),

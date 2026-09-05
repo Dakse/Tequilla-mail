@@ -27,7 +27,7 @@ import {
   Typography
 } from '@mui/joy'
 import TooltipIconButton from './TooltipIconButton'
-import { formatMessageDate } from './helpers'
+import { formatMessageDate, initials, messageContact } from './helpers'
 
 function AppLogo(props) {
   return (
@@ -40,15 +40,6 @@ function AppLogo(props) {
       <path d="M10 0.465878V2.43845L12 2.93845V0H11.8735C11.2125 0 10.5704 0.163501 10 0.465878Z" />
     </SvgIcon>
   )
-}
-
-function initials(value) {
-  return String(value || '?')
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
 }
 
 function htmlDocument(html) {
@@ -101,7 +92,7 @@ function EmailDisplay({
     )
   }
 
-  const sender = email.from?.name || email.from?.address || 'Unknown sender'
+  const contact = messageContact(email, mailbox === 'Sent')
   const timestamp = email.date ? new Date(email.date) : null
   const date = formatMessageDate(email.date, dateFormat, dateSeparator)
   const time =
@@ -185,15 +176,18 @@ function EmailDisplay({
 
       <Typography
         startDecorator={
-          <Avatar src={email.from?.avatar} sx={{ width: 20, height: 20 }}>
-            {initials(sender)}
+          <Avatar
+            src={contact.primary?.avatar}
+            sx={{ width: 20, height: 20, borderRadius: (t) => t.radius.xs }}
+          >
+            {initials(contact.primary?.name || contact.primary?.address)}
           </Avatar>
         }
         slotProps={{ endDecorator: { sx: { ml: 'auto' } } }}
         endDecorator={<Typography endDecorator={<InsertInvitationRounded />}>{date}</Typography>}
         variant="caption"
       >
-        {sender}
+        {contact.label}
       </Typography>
 
       <Typography
@@ -300,7 +294,9 @@ function EmailDisplay({
                       borderTop: (theme) => `1px solid ${theme.palette.divider}`
                     }}
                   >
-                    <Avatar sx={{ width: 20, height: 20, mr: 0.7 }}>
+                    <Avatar
+                      sx={{ width: 20, height: 20, mr: 0.7, borderRadius: (t) => t.radius.xs }}
+                    >
                       <InsertDriveFileRounded />
                     </Avatar>
                     <Typography level="body-sm" lineHeight={1} noWrap sx={{ flex: 1, minWidth: 0 }}>

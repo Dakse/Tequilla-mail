@@ -74,6 +74,10 @@ function mapMessage(row) {
   const flags = parseJson(row.flagsJson, [])
   const from = parseJson(row.fromJson, [])[0] || null
   if (from?.address) from.avatar = senderAvatar(from.address)
+  const to = parseJson(row.toJson, [])
+  for (const recipient of to) {
+    if (recipient?.address) recipient.avatar = senderAvatar(recipient.address)
+  }
 
   return {
     id: row.id,
@@ -83,7 +87,7 @@ function mapMessage(row) {
     messageId: row.messageId,
     subject: row.subject || '(no subject)',
     from,
-    to: parseJson(row.toJson, []),
+    to,
     cc: parseJson(row.ccJson, []),
     date: row.sentAt || row.internalDate,
     flags,

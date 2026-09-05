@@ -6,7 +6,6 @@ import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
 import nodemailer from 'nodemailer'
 
-
 function requiredString(value, label) {
   const result = String(value || '').trim()
   if (!result) throw new Error(`${label} is required`)
@@ -168,7 +167,19 @@ export function selectMailbox(mailboxes, selector) {
     )
 }
 
+export function syncPolicy(mode) {
+  if (!['sync', 'no-sync', 'manual'].includes(mode)) throw new Error('Invalid sync mode')
+  return { idle: mode === 'sync', timed: mode !== 'manual' }
+}
+
 export function createMailService(store, safeStorage, nativeImage) {
+  const idleWatchers = new Map()
+  const pendingSyncTimers = new Map()
+  const backgroundSyncs = new Map()
+  let syncMode = 'manual'
+  let reconciliationTimer = null
+  let notifyMessagesChanged = () => {}
+
   function attachmentById(id) {
     const attachment = store.getAttachment(Number(id))
     if (!attachment) throw new Error('Attachment not found')
@@ -266,7 +277,116 @@ export function createMailService(store, safeStorage, nativeImage) {
     ])
   }
 
-  return {
+  function runBackgroundSync(accountId) {
+    if (backgroundSyncs.has(accountId)) return backgroundSyncs.get(accountId)
+
+    const request = service
+      .syncMessages({ accountId, mailbox: '\\Inbox', limit: 50, offset: 0 })
+      .then((page) => notifyMessagesChanged({ accountId, mailbox: '\\Inbox', page }))
+      .catch((error) =>
+        notifyMessagesChanged({ accountId, mailbox: '\\Inbox', error: error.message })
+      )
+      .finally(() => backgroundSyncs.delete(accountId))
+    backgroundSyncs.set(accountId, request)
+    return request
+  }
+
+  function queueBackgroundSync(accountId, delay = 300) {
+    clearTimeout(pendingSyncTimers.get(accountId))
+    pendingSyncTimers.set(
+      accountId,
+      setTimeout(() => {
+        pendingSyncTimers.delete(accountId)
+        runBackgroundSync(accountId)
+      }, delay)
+    )
+  }
+
+  function stopIdle(accountId) {
+    const watcher = idleWatchers.get(accountId)
+    if (!watcher) return
+    watcher.stopped = true
+    clearTimeout(watcher.reconnectTimer)
+    idleWatchers.delete(accountId)
+    watcher.client?.close()
+  }
+
+  async function startIdle(accountId, retryDelay = 1000) {
+    if (!syncPolicy(syncMode).idle || idleWatchers.has(accountId)) return
+
+    const watcher = { client: null, reconnectTimer: null, stopped: false, ready: false }
+    idleWatchers.set(accountId, watcher)
+    const reconnect = () => {
+      if (watcher.stopped || watcher.reconnectTimer || idleWatchers.get(accountId) !== watcher)
+        return
+      watcher.reconnectTimer = setTimeout(() => {
+        if (idleWatchers.get(accountId) !== watcher) return
+        idleWatchers.delete(accountId)
+        startIdle(accountId, Math.min(retryDelay * 2, 60_000))
+      }, retryDelay)
+    }
+
+    try {
+      const account = accountWithSecrets(accountId)
+      const client = new ImapFlow({ ...imapOptions(account), maxIdleTime: 28 * 60_000 })
+      watcher.client = client
+      client.on('error', (error) =>
+        console.error(`IMAP IDLE failed for account ${accountId}: ${error.message}`)
+      )
+      client.on('close', reconnect)
+      for (const event of ['exists', 'expunge', 'flags']) {
+        client.on(event, () => watcher.ready && queueBackgroundSync(accountId))
+      }
+
+      await client.connect()
+      const inbox = selectMailbox(await client.list(), '\\Inbox')
+      if (!inbox) throw new Error('Inbox not found')
+      await client.mailboxOpen(inbox.path, { readOnly: true })
+      watcher.ready = true
+    } catch (error) {
+      console.error(`Could not start IMAP IDLE for account ${accountId}: ${error.message}`)
+      reconnect()
+      watcher.client?.close()
+    }
+  }
+
+  function syncAllInboxes() {
+    for (const account of store.listAccounts()) queueBackgroundSync(account.id, 0)
+  }
+
+  function applySyncMode(mode, onMessagesChanged) {
+    const policy = syncPolicy(mode)
+    syncMode = mode
+    notifyMessagesChanged = onMessagesChanged
+    clearInterval(reconciliationTimer)
+    reconciliationTimer = policy.timed ? setInterval(syncAllInboxes, 10 * 60_000) : null
+
+    if (!policy.idle) {
+      for (const accountId of [...idleWatchers.keys()]) stopIdle(accountId)
+      return
+    }
+
+    const accountIds = new Set(store.listAccounts().map(({ id }) => id))
+    for (const accountId of [...idleWatchers.keys()]) {
+      if (!accountIds.has(accountId)) stopIdle(accountId)
+    }
+    for (const accountId of accountIds) startIdle(accountId)
+  }
+
+  const service = {
+    configureSync(mode, onMessagesChanged) {
+      applySyncMode(mode, onMessagesChanged)
+      return mode
+    },
+
+    closeSync() {
+      clearInterval(reconciliationTimer)
+      for (const timer of pendingSyncTimers.values()) clearTimeout(timer)
+      pendingSyncTimers.clear()
+      for (const accountId of [...idleWatchers.keys()]) stopIdle(accountId)
+      notifyMessagesChanged = () => {}
+    },
+
     listAccounts() {
       return store.listAccounts()
     },
@@ -305,6 +425,7 @@ export function createMailService(store, safeStorage, nativeImage) {
       })
 
       saveMailboxes(mailboxes, id)
+      if (syncPolicy(syncMode).idle) startIdle(id)
       return store.listAccounts().find((savedAccount) => savedAccount.id === id)
     },
 
@@ -338,11 +459,16 @@ export function createMailService(store, safeStorage, nativeImage) {
         await removeAccountFiles(current.id)
       }
       saveMailboxes(mailboxes, current.id)
+      if (syncPolicy(syncMode).idle) {
+        stopIdle(current.id)
+        startIdle(current.id)
+      }
       return store.listAccounts().find((savedAccount) => savedAccount.id === current.id)
     },
 
     async deleteAccount(accountId) {
       const id = Number(accountId)
+      stopIdle(id)
       if (!store.deleteAccount(id)) throw new Error('Account not found')
       await removeAccountFiles(id)
       return true
@@ -627,4 +753,6 @@ export function createMailService(store, safeStorage, nativeImage) {
       }
     }
   }
+
+  return service
 }

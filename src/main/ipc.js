@@ -1,9 +1,14 @@
-import { dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 
 export function registerMailIpc(mailService) {
   const selectedAttachmentPaths = new Set()
+  const notifyMessagesChanged = (change) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('mail:messages:changed', change)
+    }
+  }
   ipcMain.handle('mail:accounts:list', () => mailService.listAccounts())
   ipcMain.handle('mail:accounts:get', (_event, accountId) =>
     mailService.getAccountSettings(accountId)
@@ -16,6 +21,9 @@ export function registerMailIpc(mailService) {
     mailService.deleteAccount(accountId)
   )
   ipcMain.handle('mail:mailboxes:list', (_event, accountId) => mailService.listMailboxes(accountId))
+  ipcMain.handle('mail:sync:set-mode', (_event, mode) =>
+    mailService.configureSync(mode, notifyMessagesChanged)
+  )
   ipcMain.handle('mail:messages:sync', (_event, request) => mailService.syncMessages(request))
   ipcMain.handle('mail:messages:get', (_event, messageId) => mailService.getMessage(messageId))
   ipcMain.handle('mail:messages:set-flag', (_event, request) => mailService.setMessageFlag(request))

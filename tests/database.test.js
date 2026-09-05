@@ -84,6 +84,7 @@ test('stores accounts and synchronizes messages without duplicates', (context) =
   assert.equal(messages.length, 1)
   assert.equal(messages[0].subject, 'Hello')
   assert.equal(messages[0].from.avatar, 'https://example.com/favicon.ico')
+  assert.equal(messages[0].to[0].avatar, 'https://example.com/favicon.ico')
   assert.equal(messages[0].unread, true)
   assert.equal(store.listMessages(accountId, '\\Junk')[0].subject, 'Spam')
 

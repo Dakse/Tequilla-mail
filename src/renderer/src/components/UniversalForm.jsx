@@ -372,6 +372,11 @@ function UniversalForm({ fields, actions, component, onSubmit, sx, ...props }) {
       <FormControl key={key} required={field.required} sx={field.sx}>
         {field.label && <FormLabel>{field.label}</FormLabel>}
         {control}
+        {field.description && (
+          <Typography level="body-xs" sx={{ mt: 0.75, color: 'text.tertiary' }}>
+            {field.description}
+          </Typography>
+        )}
       </FormControl>
     )
   })
