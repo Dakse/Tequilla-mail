@@ -42,7 +42,7 @@ function AppLogo(props) {
   )
 }
 
-function htmlDocument(html) {
+export function htmlDocument(html) {
   const document = new DOMParser().parseFromString(html, 'text/html')
   for (const link of document.querySelectorAll('a, area')) {
     link.setAttribute('target', '_blank')

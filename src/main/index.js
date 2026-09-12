@@ -1,4 +1,14 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, Tray } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  nativeImage,
+  powerMonitor,
+  safeStorage,
+  Tray
+} from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import electronUpdater from 'electron-updater'
@@ -17,6 +27,7 @@ let unreadTrayIcon
 let unreadOverlayIcon
 let closeBehavior = 'tray'
 let quitting = false
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
 let updateState = { status: 'idle', currentVersion: '', availableVersion: null }
 const UNREAD_TRAY_ICON =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAARbSURBVFhHtVffa1RHFL7pprE/tlZiotvsj+zuvTNndvMQHwpGCSFQRFwFURDBFavElmCgSYkiaQtSxJiXqHmwZDe6MRtjEP+J9qH0wT71X2gphfShfS2UU865d5LZ2Xuzu2o/+GDDzs73zTdnzkwc5xXhum5aKfU5AHwrpZxQSn1kj/lfUCwWewDgKwD4u1AooKaU8k8AmHUcJ2b/5o1BCFGSUv5CggBAotukvwMjL6WUn9i/fS0AQFZKuaGUQqIpbNMYUxNCJO25OkWMYgWAv4LV7azYdVFlMgj5PEqdhhCoBgexQPRT2pJSTtmTtgWKUUr5sx03eB4W0ml0h4cxWSph9sgRNkPiZCQzPo7J48ftbflRSjlqa4SCYqP4wuImITLQe/Uqxh4+ROfFC9x/+TIWkklOIn7jBjqbm9h9/77/G8/b3hYyAwDf5fP5A7bmNgBgUim1ZcetV65yOYzfvMkizqNH6KyvY9/Fi74B18Weu3fRefYMexYWGgxoBmn+LoT41NYm8W+KxWJTdWsWk0nsK5fR2dhAp1LxaRl499YtTiX24EGoASKlEehMm+KESHEqLNrrrpUVf+WmgXIZC6kU1wDVxcDJk9h/4QIK2j6qi5D5Ap1/qJmxASHEbFjsPNjzeHXv3L6NztrajriRwFB/PxcmM5XCQibTNI9N0hNCfKYNLEQZoOh7r1xB5+nTRnHiygrH/cHsLB44fx4HR0d55WSAjNtzhRj4mg1IKefDDNBEmbExdB4/ZrEmA8vL/pbU65wGfX57cRH3zsygoIKj4xkibhiYizSgzzZVtPPkSbO4zWrVN0lmnz/H3okJTs8WbtuAymZx37Vr/spsMZskXKv5aQRpdVWrmD18mOexxVsbEMI/1/PzrVdPYsvLmDh9GrMjI7jnzh3fRL2O783NcVsOOw27G6AB6TQmzp5tncDqKosOJRI4HI/7vUIXbL2OA6dO+ce0UwNUxVTR3YuL/opsYc1qFbsqFTx47hwXLNeMHl+rcVHSPHZBtjTAg1Ip7Lt0qXUKVICrqz5JnE6H/m59HfdNTnIz69gAXTDuoUP4Fl08ZgeMIhkJPu+Gtg3oFD6cmmqdgsF20GBgt05Ix4juAU7AWGET6btqtUFka/zjJpowO+FMlAFOIZPB9+katu8CTeoBtVrD5LZwlAk24HmeK6X8N+o2JAOpY8fCe0K9jvHr1/keaEfcNsEGghS+pHvafgUxqTHl87iHbkSqdGPlsaUl9IaG+E3wWgYIAFAGgF9pO+w0qBgTZ87sFCPt+doaDpRK/F0n4pEGCEqp/VLKJeNByeTrFQC7793zO93mJu6dnuaOqcd0YiLSgIZSagQAfjDToG0YPHqUX8PJEyc4erPDvVEDGsH/f39wGgD8MKWiDHt0mLAFw8QJtl4ocrncQQCohD3VbZqwhV9J3IQQYgwAfgorUl0zAPB9g0oE7Lk7AgB8obdFEwB+o+3SY2xBE+Zc/wGilhGg6AOrlwAAAABJRU5ErkJggg=='
@@ -59,6 +70,10 @@ function registerUpdater() {
 }
 
 function showWindow() {
+  if (!app.isReady()) {
+    app.whenReady().then(showWindow)
+    return
+  }
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow()
     return
@@ -162,29 +177,39 @@ function createWindow() {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.tequillamail.app')
+if (!hasSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', showWindow)
+  app.whenReady().then(() => {
+    // Set app user model id for windows
+    electronApp.setAppUserModelId('com.tequillamail.app')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    // Default open or close DevTools by F12 in development
+    // and ignore CommandOrControl + R in production.
+    // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    store = openDatabase(app.getPath('userData'))
+    mailService = createMailService(store, safeStorage, nativeImage)
+    powerMonitor.on('suspend', () => mailService.suspendSync())
+    powerMonitor.on('resume', () => {
+      mailService.resumeSync()
+      updateUnreadIndicators()
+    })
+    registerMailIpc(mailService, updateUnreadIndicators)
+    registerDesktopIpc()
+    registerUpdater()
+
+    createTray()
+    createWindow()
+    updateUnreadIndicators()
+
+    app.on('activate', showWindow)
   })
-
-  store = openDatabase(app.getPath('userData'))
-  mailService = createMailService(store, safeStorage, nativeImage)
-  registerMailIpc(mailService, updateUnreadIndicators)
-  registerDesktopIpc()
-  registerUpdater()
-
-  createTray()
-  createWindow()
-  updateUnreadIndicators()
-
-  app.on('activate', showWindow)
-})
+}
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

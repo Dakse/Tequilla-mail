@@ -50,14 +50,17 @@ jobs:
           name: tequillamail-${{ matrix.target }}
           if-no-files-found: error
           path: |
-            dist/*.exe
-            dist/*.blockmap
-            dist/*.yml
-            dist/*.dmg
-            dist/*.zip
+            dist/*-setup.exe
+            dist/*-setup.exe.blockmap
+            dist/latest.yml
+            dist/*-mac-*.dmg
+            dist/*-mac-*.zip
+            dist/*-mac-*.zip.blockmap
+            dist/latest-mac.yml
             dist/*.AppImage
             dist/*.deb
             dist/*.snap
+            dist/latest-linux.yml
 
   release:
     if: github.ref_type == 'tag'
@@ -78,7 +81,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME"
             gh release upload "$GITHUB_REF_NAME" release/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release/* --draft --generate-notes --title "TequillaMail ${GITHUB_REF_NAME#v}"
+            gh release create "$GITHUB_REF_NAME" release/* --draft --generate-notes --title "$GITHUB_REF_NAME"
           fi

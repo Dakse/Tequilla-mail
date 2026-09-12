@@ -22,6 +22,10 @@ test('stores accounts and synchronizes messages without duplicates', (context) =
   const account = {
     name: 'Test account',
     email: 'test@example.com',
+    avatar: 'data:image/png;base64,dGVzdA==',
+    color: '#009999',
+    footerHtml: '<p>Test footer</p>',
+    footerMode: 'rich',
     imapHost: 'imap.example.com',
     imapPort: 993,
     imapSecure: 1,
@@ -34,6 +38,9 @@ test('stores accounts and synchronizes messages without duplicates', (context) =
     smtpPassword: Buffer.from('encrypted-smtp')
   }
   const accountId = store.createAccount(account)
+  assert.equal(store.listAccounts()[0].avatar, account.avatar)
+  assert.equal(store.listAccounts()[0].color, account.color)
+  assert.equal(store.listAccounts()[0].footerHtml, account.footerHtml)
   const mailbox = store.upsertMailbox(accountId, {
     path: 'INBOX',
     name: 'INBOX',

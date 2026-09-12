@@ -83,10 +83,12 @@ function AccountsPanel({
                   position: 'relative',
                   flexShrink: 0,
                   '& .account-settings': { opacity: 0 },
-                  '&:hover .account-settings, &:focus-within .account-settings': { opacity: 1 }
+                  '&:hover .account-settings, & .account-settings:focus-visible': { opacity: 1 }
                 }}
               >
-                <Avatar variant="solid">{initials(account.name)}</Avatar>
+                <Avatar src={account.avatar || undefined} variant="solid">
+                  {initials(account.name)}
+                </Avatar>
                 <TooltipIconButton
                   className="account-settings"
                   aria-label={`Settings for ${account.name}`}

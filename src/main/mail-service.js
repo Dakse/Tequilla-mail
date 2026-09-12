@@ -23,10 +23,26 @@ function validPort(value, label) {
 function normalizeAccount(input) {
   const email = requiredString(input.email, 'Email')
   if (!email.includes('@')) throw new Error('Email is invalid')
+  const avatar = String(input.avatar || '')
+  if (
+    avatar &&
+    (!/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(avatar) || avatar.length > 2_000_000)
+  ) {
+    throw new Error('Avatar must be a PNG, JPEG, WebP, or GIF smaller than 1.5 MB')
+  }
+  const color = String(input.color || '#009999')
+  if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error('Account color is invalid')
+  const footerHtml = String(input.footerHtml || '')
+  if (footerHtml.length > 100_000) throw new Error('Email footer is too large')
+  const footerMode = input.footerMode === 'raw' ? 'raw' : 'rich'
 
   return {
     name: requiredString(input.name, 'Name'),
     email,
+    avatar: avatar || null,
+    color,
+    footerHtml,
+    footerMode,
     imapHost: requiredString(input.incomingServer, 'IMAP server'),
     imapPort: validPort(input.incomingPort, 'IMAP port'),
     imapSecure: Boolean(input.incomingTls),
@@ -208,7 +224,9 @@ export function createMailService(store, safeStorage, nativeImage) {
   const pendingSyncTimers = new Map()
   const backgroundSyncs = new Map()
   let syncMode = 'manual'
+  let syncSuspended = false
   let reconciliationTimer = null
+  let resumeTimer = null
   let notifyMessagesChanged = () => {}
 
   function attachmentById(id) {
@@ -225,6 +243,10 @@ export function createMailService(store, safeStorage, nativeImage) {
       id: row.id,
       name: row.name,
       email: row.email,
+      avatar: row.avatar,
+      color: row.color,
+      footerHtml: row.footer_html,
+      footerMode: row.footer_mode,
       imapHost: row.imap_host,
       imapPort: row.imap_port,
       imapSecure: Boolean(row.imap_secure),
@@ -311,13 +333,14 @@ export function createMailService(store, safeStorage, nativeImage) {
   }
 
   function runBackgroundSync(accountId) {
+    if (syncSuspended) return Promise.resolve()
     if (backgroundSyncs.has(accountId)) return backgroundSyncs.get(accountId)
 
     const request = service
       .syncMessages({ accountId, mailbox: '\\Inbox', limit: 50, offset: 0 })
       .then((page) => notifyMessagesChanged({ accountId, mailbox: '\\Inbox', page }))
       .catch((error) =>
-        notifyMessagesChanged({ accountId, mailbox: '\\Inbox', error: error.message })
+        console.error(`Background sync failed for account ${accountId}: ${error.message}`)
       )
       .finally(() => backgroundSyncs.delete(accountId))
     backgroundSyncs.set(accountId, request)
@@ -325,6 +348,7 @@ export function createMailService(store, safeStorage, nativeImage) {
   }
 
   function queueBackgroundSync(accountId, delay = 300) {
+    if (syncSuspended) return
     clearTimeout(pendingSyncTimers.get(accountId))
     pendingSyncTimers.set(
       accountId,
@@ -345,7 +369,7 @@ export function createMailService(store, safeStorage, nativeImage) {
   }
 
   async function startIdle(accountId, retryDelay = 1000) {
-    if (!syncPolicy(syncMode).idle || idleWatchers.has(accountId)) return
+    if (syncSuspended || !syncPolicy(syncMode).idle || idleWatchers.has(accountId)) return
 
     const watcher = { client: null, reconnectTimer: null, stopped: false, ready: false }
     idleWatchers.set(accountId, watcher)
@@ -392,6 +416,13 @@ export function createMailService(store, safeStorage, nativeImage) {
     syncMode = mode
     notifyMessagesChanged = onMessagesChanged
     clearInterval(reconciliationTimer)
+    reconciliationTimer = null
+
+    if (syncSuspended) {
+      for (const accountId of [...idleWatchers.keys()]) stopIdle(accountId)
+      return
+    }
+
     reconciliationTimer = policy.timed ? setInterval(syncAllInboxes, 10 * 60_000) : null
 
     if (!policy.idle) {
@@ -412,7 +443,30 @@ export function createMailService(store, safeStorage, nativeImage) {
       return mode
     },
 
+    suspendSync() {
+      syncSuspended = true
+      clearTimeout(resumeTimer)
+      resumeTimer = null
+      clearInterval(reconciliationTimer)
+      reconciliationTimer = null
+      for (const timer of pendingSyncTimers.values()) clearTimeout(timer)
+      pendingSyncTimers.clear()
+      for (const accountId of [...idleWatchers.keys()]) stopIdle(accountId)
+    },
+
+    resumeSync(delay = 5000) {
+      clearTimeout(resumeTimer)
+      resumeTimer = setTimeout(() => {
+        resumeTimer = null
+        syncSuspended = false
+        applySyncMode(syncMode, notifyMessagesChanged)
+        if (syncPolicy(syncMode).timed) syncAllInboxes()
+      }, delay)
+    },
+
     closeSync() {
+      syncSuspended = true
+      clearTimeout(resumeTimer)
       clearInterval(reconciliationTimer)
       for (const timer of pendingSyncTimers.values()) clearTimeout(timer)
       pendingSyncTimers.clear()
@@ -430,6 +484,10 @@ export function createMailService(store, safeStorage, nativeImage) {
         id: account.id,
         name: account.name,
         email: account.email,
+        avatar: account.avatar,
+        color: account.color,
+        footerHtml: account.footerHtml,
+        footerMode: account.footerMode,
         incomingServer: account.imapHost,
         incomingPort: account.imapPort,
         incomingTls: account.imapSecure,
@@ -473,12 +531,19 @@ export function createMailService(store, safeStorage, nativeImage) {
         incomingPassword: input.incomingPassword || current.imapPassword,
         outgoingPassword: input.outgoingPassword || current.smtpPassword
       })
-      const mailboxes = await verifyAccount(account)
       const imapChanged =
         current.imapHost !== account.imapHost ||
         current.imapPort !== account.imapPort ||
         current.imapSecure !== account.imapSecure ||
-        current.imapUser !== account.imapUser
+        current.imapUser !== account.imapUser ||
+        current.imapPassword !== account.imapPassword
+      const smtpChanged =
+        current.smtpHost !== account.smtpHost ||
+        current.smtpPort !== account.smtpPort ||
+        current.smtpSecure !== account.smtpSecure ||
+        current.smtpUser !== account.smtpUser ||
+        current.smtpPassword !== account.smtpPassword
+      const mailboxes = imapChanged || smtpChanged ? await verifyAccount(account) : null
 
       store.updateAccount(current.id, {
         ...account,
@@ -490,9 +555,9 @@ export function createMailService(store, safeStorage, nativeImage) {
       if (imapChanged) {
         store.deleteAccountMailboxes(current.id)
         await removeAccountFiles(current.id)
+        saveMailboxes(mailboxes, current.id)
       }
-      saveMailboxes(mailboxes, current.id)
-      if (syncPolicy(syncMode).idle) {
+      if (imapChanged && syncPolicy(syncMode).idle) {
         stopIdle(current.id)
         startIdle(current.id)
       }

@@ -114,6 +114,10 @@ export function openDatabase(userDataPath) {
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      avatar TEXT,
+      color TEXT NOT NULL DEFAULT '#009999',
+      footer_html TEXT NOT NULL DEFAULT '',
+      footer_mode TEXT NOT NULL DEFAULT 'rich',
       imap_host TEXT NOT NULL,
       imap_port INTEGER NOT NULL,
       imap_secure INTEGER NOT NULL,
@@ -181,16 +185,33 @@ export function openDatabase(userDataPath) {
       ON mailboxes(account_id, special_use);
   `)
 
+  const accountColumns = new Set(
+    db
+      .prepare('PRAGMA table_info(accounts)')
+      .all()
+      .map(({ name }) => name)
+  )
+  if (!accountColumns.has('avatar')) db.exec('ALTER TABLE accounts ADD COLUMN avatar TEXT')
+  if (!accountColumns.has('color')) {
+    db.exec("ALTER TABLE accounts ADD COLUMN color TEXT NOT NULL DEFAULT '#009999'")
+  }
+  if (!accountColumns.has('footer_html')) {
+    db.exec("ALTER TABLE accounts ADD COLUMN footer_html TEXT NOT NULL DEFAULT ''")
+  }
+  if (!accountColumns.has('footer_mode')) {
+    db.exec("ALTER TABLE accounts ADD COLUMN footer_mode TEXT NOT NULL DEFAULT 'rich'")
+  }
+
   const insertAccount = db.prepare(`
     INSERT INTO accounts (
-      name, email,
+      name, email, avatar, color, footer_html, footer_mode,
       imap_host, imap_port, imap_secure, imap_user, imap_password,
       smtp_host, smtp_port, smtp_secure, smtp_user, smtp_password
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const updateAccount = db.prepare(`
     UPDATE accounts SET
-      name = ?, email = ?,
+      name = ?, email = ?, avatar = ?, color = ?, footer_html = ?, footer_mode = ?,
       imap_host = ?, imap_port = ?, imap_secure = ?, imap_user = ?, imap_password = ?,
       smtp_host = ?, smtp_port = ?, smtp_secure = ?, smtp_user = ?, smtp_password = ?
     WHERE id = ?
@@ -202,6 +223,10 @@ export function openDatabase(userDataPath) {
       a.id,
       a.name,
       a.email,
+      a.avatar,
+      a.color,
+      a.footer_html AS footerHtml,
+      a.footer_mode AS footerMode,
       a.created_at AS createdAt,
       COALESCE(SUM(CASE
         WHEN mb.special_use = '\\Inbox' AND m.flags_json NOT LIKE '%\\\\Seen%' THEN 1
@@ -356,6 +381,10 @@ export function openDatabase(userDataPath) {
       const result = insertAccount.run(
         account.name,
         account.email,
+        account.avatar || null,
+        account.color || '#009999',
+        account.footerHtml || '',
+        account.footerMode || 'rich',
         account.imapHost,
         account.imapPort,
         account.imapSecure,
@@ -374,6 +403,10 @@ export function openDatabase(userDataPath) {
       updateAccount.run(
         account.name,
         account.email,
+        account.avatar || null,
+        account.color || '#009999',
+        account.footerHtml || '',
+        account.footerMode || 'rich',
         account.imapHost,
         account.imapPort,
         account.imapSecure,

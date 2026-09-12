@@ -416,6 +416,7 @@ function Layout() {
           composing={emailEditorOpen}
           contacts={contacts}
           selectedAccount={selectedAccount}
+          footerHtml={accounts.find((account) => account.id === selectedAccount)?.footerHtml || ''}
           email={selectedEmail}
           dateFormat={dateFormat}
           dateSeparator={dateSeparator}

@@ -7,6 +7,7 @@ function EmailPanel({
   composing,
   contacts,
   selectedAccount,
+  footerHtml,
   email,
   dateFormat,
   dateSeparator,
@@ -42,6 +43,7 @@ function EmailPanel({
       {composing ? (
         <EmailEditor
           contacts={contacts}
+          footerHtml={footerHtml}
           onClose={onCloseEditor}
           onSend={(message) => window.mail.sendMessage({ accountId: selectedAccount, ...message })}
         />

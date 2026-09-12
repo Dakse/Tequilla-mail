@@ -2,9 +2,16 @@ import { AttachFileRounded, CloseRounded, SendRounded } from '@mui/icons-materia
 import { Alert, Box, Button, Chip, Divider, Typography } from '@mui/joy'
 import { useState } from 'react'
 import TooltipIconButton from './TooltipIconButton'
+import FooterPreview from './FooterPreview'
 import UniversalForm, { createEmptyRichText, richTextToHtml, richTextToText } from './UniversalForm'
 
-function EmailEditor({ contacts = [], onClose, onSend }) {
+function footerToText(html) {
+  if (!html) return ''
+  const source = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(?:p|div|li|tr)>/gi, '\n')
+  return new DOMParser().parseFromString(source, 'text/html').body.textContent.trim()
+}
+
+function EmailEditor({ contacts = [], footerHtml = '', onClose, onSend }) {
   const [body, setBody] = useState(createEmptyRichText)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -39,11 +46,14 @@ function EmailEditor({ contacts = [], onClose, onSend }) {
     setSending(true)
     setError('')
     try {
+      const footerText = footerToText(footerHtml)
       await onSend({
         to: recipients.join(', '),
         subject: form.get('subject'),
-        text,
-        html: richTextToHtml(body),
+        text: [text, footerText].filter(Boolean).join('\n\n'),
+        html: `${richTextToHtml(body)}${
+          footerHtml ? `<div data-tequillamail-footer>${footerHtml}</div>` : ''
+        }`,
         attachments
       })
       onClose()
@@ -108,6 +118,11 @@ function EmailEditor({ contacts = [], onClose, onSend }) {
       onChange: setBody,
       props: { placeholder: 'Write your message…' },
       sx: { flex: 1, minHeight: 0 }
+    },
+    {
+      type: 'custom',
+      key: 'footer-preview',
+      render: () => <FooterPreview html={footerHtml} />
     },
     ...(attachments.length
       ? [
